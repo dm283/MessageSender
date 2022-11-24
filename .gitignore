@@ -1,0 +1,9 @@
+*.log
+*.txt
+*.json
+*.sql
+*.ini
+venv/
+рабочие/
+build/
+setup.py
