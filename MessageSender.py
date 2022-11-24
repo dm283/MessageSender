@@ -1,5 +1,7 @@
-import sys, configparser, datetime, asyncio, tkinter as tk
+import sys, os, configparser, re, datetime, json, asyncio, email, tkinter as tk
 import requests, aioodbc
+from aiosmtplib import SMTP
+from aioimaplib import aioimaplib
 from cryptography.fernet import Fernet
 
 # загрузка конфигурации
@@ -17,13 +19,15 @@ hashed_user_credentials_password = config['user_credentials']['password'].split(
 user_credentials_password = (refKey.decrypt(hashed_user_credentials_password).decode('utf-8'))
 hashed_common_bot_token = config['telegram_bot']['bot_token'].split('\t#')[0]
 common_bot_token = (refKey.decrypt(hashed_common_bot_token).decode('utf-8'))
+hashed_email_server_password = config['email']['server_password'].split('\t#')[0]
+email_server_password = (refKey.decrypt(hashed_email_server_password).decode('utf-8'))
 
 CHECK_DB_PERIOD = int(config['common']['check_db_period'].split('\t#')[0])  # период проверки новых записей в базе данных
 
 USER_NAME = config['user_credentials']['name'].split('\t#')[0]
 USER_PASSWORD = user_credentials_password
 
-# добавить admin email
+ADMIN_EMAIL = config['admin_credentials']['email'].split('\t#')[0]  # почта админа
 
 BOT_NAME = config['telegram_bot']['bot_name'].split('\t#')[0]
 BOT_TOKEN = common_bot_token
@@ -33,7 +37,27 @@ TELEGRAM_DB_TABLE_CHATS = config['telegram_bot']['db_table_chats'].split('\t#')[
 TELEGRAM_DB_CONNECTION_STRING = config['telegram_bot']['db_connection_string'].split('\t#')[0]  # odbc driver system dsn name
 ADMIN_BOT_CHAT_ID = str()  # объявление глобальной константы, которая записывается в функции load_telegram_chats_from_db
 
-# добавить параметры email
+SENDER_EMAIL, EMAIL_SERVER_PASSWORD = config['email']['sender_email'].split('\t#')[0], email_server_password
+SMTP_HOST, SMTP_PORT = config['email']['smtp_host'].split('\t#')[0], config['email']['smtp_port'].split('\t#')[0]
+TEST_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}
+Subject: Mailsender - тестовое сообщение\n
+Это тестовое сообщение отправленное сервисом Mailsender.""".encode('utf8')
+UNDELIVERED_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}
+Subject: Mailsender - недоставленное сообщение\n
+Это сообщение отправленно сервисом Mailsender.\n""".encode('utf8')
+IMAP_HOST, IMAP_PORT = config['email']['imap_host'].split('\t#')[0], config['email']['imap_port'].split('\t#')[0]
+EMAIL_DB = config['email']['db'].split('\t#')[0]
+EMAIL_DB_CONNECTION_STRING = config['email']['db_connection_string'].split('\t#')[0]
+EMAIL_DB_TABLE_EMAILS = config['email']['db_table_emails'].split('\t#')[0]
+
+REGEX_EMAIL_VALID = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b' # шаблон для валидации e-mail адреса
+
+ERROR_EMAIL_LIST = []  # список несуществующих адресов
+error_email_list_path = 'error-emails-list.log'
+if os.path.exists(error_email_list_path):
+    with open(error_email_list_path, 'r') as f:
+        for l in f.readlines():
+            ERROR_EMAIL_LIST.append(l.split('\t')[-1].strip())
 
 ROBOT_START = False
 ROBOT_STOP = False
@@ -117,46 +141,93 @@ async def robot():
     if ROBOT_START or ROBOT_STOP:
         return
     ROBOT_START = True  # флаг старта робота, предотвращает запуск нескольких экземпляров робота
+
+    # подключение к базе данных TELEGRAM_DB
     try:
-        cnxn = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_robot)
-        cursor = await cnxn.cursor()
-        print(f'Создано подключение к базе данных {TELEGRAM_DB}')  ###
+        cnxn_telegram_db = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_robot)
+        cursor_telegram_db = await cnxn_telegram_db.cursor()
+        print(f'Создано подключение к базе данных telegram {TELEGRAM_DB}')  ###
     except Exception as e:
-        print("Подключение к базе данных  -  ошибка.", e)
+        print(f"Подключение к базе данных telegram {TELEGRAM_DB} -  ошибка.", e)
+        return 1
+    # подключение к базе данных EMAIL_DB
+    try:
+        cnxn_email_db = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_robot)
+        cursor_email_db = await cnxn_email_db.cursor()
+        print(f'Создано подключение к базе данных email {EMAIL_DB}')  ###
+    except Exception as e:
+        print(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.", e)
         return 1
     
     # чтение из бд данных о telegram-группах
-    telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor)
+    telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor_telegram_db)
     if telegram_chats == 1:
-        await cursor.close()
-        await cnxn.close()
+        await cursor_telegram_db.close()
+        await cnxn_telegram_db.close()
         ROBOT_START, ROBOT_STOP = False, False
-        lbl_msg_robot["text"] = 'Ошибка чтения из базы данных'
+        lbl_msg_robot["text"] = 'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
         return 1
 
     lbl_msg_robot["text"] = 'Робот в рабочем режиме'
 
     while not ROBOT_STOP:
-        msg_data_records = await load_records_from_db(cursor)
-        if msg_data_records == 1:
-            await cursor.close()
-            await cnxn.close()
+        # обработка telegram-сообщений ====================================================================
+        telegram_msg_data_records = await load_records_from_telegram_db(cursor_telegram_db)
+        if telegram_msg_data_records == 1:
+            await cursor_telegram_db.close()
+            await cnxn_telegram_db.close()
             ROBOT_START, ROBOT_STOP = False, False
-            lbl_msg_robot["text"] = 'Ошибка чтения из базы данных'
+            lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
             return 1
-
-        print(msg_data_records)
+        print(telegram_msg_data_records)
         print()
-        if len(msg_data_records) > 0:
-            await robot_send_messages(cnxn, cursor, msg_data_records, telegram_chats)
+        if len(telegram_msg_data_records) > 0:
+            await robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, telegram_msg_data_records, telegram_chats)
         else:
-            print('Нет новых сообщений в базе данных.')  ### test
+            print(f'Нет новых сообщений в базе данных telegram {TELEGRAM_DB}.')  ### test
 
+        # обработка email-сообщений ======================================================================
+        email_msg_data_records = await load_records_from_email_db(cursor_email_db)
+        if email_msg_data_records == 1:
+            await cursor_email_db.close()
+            await cnxn_email_db.close()
+            ROBOT_START, ROBOT_STOP = False, False
+            lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
+            return 1
+        print(email_msg_data_records)
+        print()
+        if len(email_msg_data_records) > 0:
+            await robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records)
+        else:
+            print(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')  ### test
+
+        #  email - недоставленные сообщения: проверка оповещений, запись в лог и отправка на почту админа
+        undelivereds = await check_undelivered_emails(IMAP_HOST, SENDER_EMAIL, EMAIL_SERVER_PASSWORD)
+        if len(undelivereds) > 0:
+            smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+            await smtp_client.connect()
+            for u in undelivereds:
+                print(f'undelivered:  {u}')
+                log_rec = f'Недоставлено сообщение, отправленное {u[0]} на несуществующий адрес {u[1]}'
+                await rec_to_log(log_rec)
+
+                # запись несуществующего адреса в error-email-list
+                eel_rec = f'{u[0]}\t{u[1]}'
+                await rec_to_error_emails_list(eel_rec)
+                if u[1] not in ERROR_EMAIL_LIST:
+                    ERROR_EMAIL_LIST.append(u[1])
+
+                msg = UNDELIVERED_MESSAGE + log_rec.encode('utf-8')
+                await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
+            await smtp_client.quit()
+            
         await asyncio.sleep(CHECK_DB_PERIOD)
 
     #  действия после остановки робота
-    await cursor.close()
-    await cnxn.close()
+    await cursor_telegram_db.close()
+    await cnxn_telegram_db.close()
+    await cursor_email_db.close()
+    await cnxn_email_db.close()
     print("Робот остановлен")
     ROBOT_START, ROBOT_STOP = False, False
     lbl_msg_robot["text"] = 'Робот остановлен'
@@ -164,11 +235,75 @@ async def robot():
         sys.exit()
 
 
-async def robot_send_messages(cnxn, cursor, msg_data_records, telegram_chats):
+async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records):
+    # отправляет почту
+    smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+    await smtp_client.connect() 
+    for e in email_msg_data_records:
+        # e =  (1, 'test1', 'This is the test message 1!', 'testbox283@yandex.ru; testbox283@mail.ru')
+        print("Новая запись в EMAIL_DB ", e)  ### test
+        addrs = e[3].split(';')
+        for a in addrs:
+            a = a.strip()
+            if(re.fullmatch(REGEX_EMAIL_VALID, a)):
+                if a not in ERROR_EMAIL_LIST:
+                    msg = f'To: {a}\nFrom: {SENDER_EMAIL}\nSubject: {e[1]}\n\n{e[2]}'.encode("utf-8")
+                    await smtp_client.sendmail(SENDER_EMAIL, a, msg)
+                    log_rec = f'send message to {a} [ id = {e[0]} ]'
+                else:
+                    print(f'адрес {a} в error-list')   ###
+                    log_rec = f'адрес {a} в error-list'  ###
+            else:
+                log_rec = f'invalid email address {a} [ id = {e[0]} ]'
+            await rec_to_log(log_rec)
+        await set_record_handling_time_in_email_db(cnxn_email_db, cursor_email_db, id=e[0])
+        print('Запись из EMAIL_DB обработана')  ####
+    await smtp_client.quit()
+
+
+async def check_undelivered_emails(host, user, password):
+    # проверяет неотправленные сообщения, написано для imap@yandex, для других серверов может потребоваться корректировка функции
+    imap_client = aioimaplib.IMAP4_SSL(host=host)
+    await imap_client.wait_hello_from_server()
+    await imap_client.login(user, password)
+    await imap_client.select('INBOX')
+    typ, msg_nums_unseen = await imap_client.search('UNSEEN')
+    typ, msg_nums_from_subject = await imap_client.search('(FROM "mailer-daemon@yandex.ru" SUBJECT "Недоставленное сообщение")')
+    msg_nums_unseen = set(msg_nums_unseen[0].decode().split())
+    msg_nums_from_subject = set(msg_nums_from_subject[0].decode().split())
+    msg_nums = ' '.join(list(msg_nums_unseen & msg_nums_from_subject))
+    #msg_nums = '7 8'  #  для разработки
+    l = len(msg_nums.split())
+    if l == 0:
+        print('Нет новых сообщений о недоставленной почте')    ###
+        await imap_client.close()
+        await imap_client.logout()
+        return []
+    print(f'Получено {l} оповещений о недоставленной почте')    ###
+    msg_nums = msg_nums.replace(' ', ',')
+    typ, data = await imap_client.fetch(msg_nums, '(UID BODY[TEXT])')
+
+    undelivered = []
+    for m in range(1, len(data), 3):
+        msg = email.message_from_bytes(data[m])
+        msg = msg.get_payload()
+        msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
+        msg_recipient = re.search(r'(?<=Original-Recipient: rfc822;).*', msg)[0].strip()
+        print(msg_arrival_date, msg_recipient)  ###
+        undelivered.append((msg_arrival_date, msg_recipient))
+
+    await imap_client.close()
+    await imap_client.logout()
+
+    print(undelivered)  ###
+    return undelivered
+
+
+async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data_records, telegram_chats):
     # отправляет сообщения через telegram
     for record in msg_data_records:
         # структура данных record =  (1, 'This is the test message 1!', 'test-group-1')
-        print("Новая запись", record)  ###
+        print("Новая запись в TELEGRAM_DB ", record)  ###
         record_id = record[0]
         record_msg = record[1]
         record_addresses = record[2].split(';')
@@ -195,40 +330,67 @@ async def robot_send_messages(cnxn, cursor, msg_data_records, telegram_chats):
             except Exception as e:
                 print('Ошибка отправки:\n', e)
 
-        await set_record_handling_time_in_db(cnxn, cursor, record_id)
-        print('Запись обработана.')  ####
+        await set_record_handling_time_in_telegram_db(cnxn_telegram_db, cursor_telegram_db, record_id)
+        print('Запись из TELEGRAM_DB обработана.')  ####
 
 
 # === DATABASE FUNCTIONS ===
-async def load_telegram_chats_from_db(cursor):
+async def load_telegram_chats_from_db(cursor_telegram_db):
     # выборка из базы данных параметров telegram-чатов бота
     try:
         query = f"select entity_name, chat_id, entity_type from {TELEGRAM_DB_TABLE_CHATS} where bot_name='{BOT_NAME}' and is_active"
-        await cursor.execute(query)
-        rows = await cursor.fetchall()
+        await cursor_telegram_db.execute(query)
+        rows = await cursor_telegram_db.fetchall()
         telegram_chats_dict = {row[0]: row[1] for row in rows}
         ADMIN_BOT_CHAT_ID = [row[1] for row in rows if row[2] == 'administrator'][0]
         return telegram_chats_dict, ADMIN_BOT_CHAT_ID
     except Exception as e:
-        print('Ошибка чтения из базы данных.', e)
+        print('Ошибка чтения из базы данных TELEGRAM_DB.', e)
         return 1
 
 
-async def load_records_from_db(cursor):
-    # выборка из базы данных необработанных (новых) записей
+async def load_records_from_email_db(cursor_email_db):
+    # выборка из базы данных EMAIL_DB необработанных (новых) записей
     try:
-        await cursor.execute(f'select UniqueIndexField, msg_text, adrto from {TELEGRAM_DB_TABLE_MESSAGES} where dates is null order by datep')
-        rows = await cursor.fetchall()  # список кортежей
+        await cursor_email_db.execute(f"""select UniqueIndexField, subj, textemail, adrto from {EMAIL_DB_TABLE_EMAILS} 
+                where dates is null order by datep""")
+        rows = await cursor_email_db.fetchall()  # список кортежей
     except Exception as e:
-        print('Ошибка чтения из базы данных.', e)
+        print(f'Ошибка чтения из базы данных EMAIL_DB {EMAIL_DB}.', e)
         return 1
     return rows
 
-async def set_record_handling_time_in_db(cnxn, cursor, id):
-    # пишет в базу дату/время отправки сообщения
+async def load_records_from_telegram_db(cursor_telegram_db):
+    # выборка из базы данных TELEGRAM_DB необработанных (новых) записей
+    try:
+        await cursor_telegram_db.execute(f"""select UniqueIndexField, msg_text, adrto from {TELEGRAM_DB_TABLE_MESSAGES} 
+            where dates is null order by datep""")
+        rows = await cursor_telegram_db.fetchall()  # список кортежей
+    except Exception as e:
+        print(f'Ошибка чтения из базы данных TELEGRAM_DB {TELEGRAM_DB}.', e)
+        return 1
+    return rows
+
+
+async def set_record_handling_time_in_email_db(cnxn_email_db, cursor_email_db, id):
+    # пишет в базу EMAIL_DB дату/время отправки сообщения
     dt_string = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    await cursor.execute(f"update {TELEGRAM_DB_TABLE_MESSAGES} set dates = '{dt_string}' where UniqueIndexField = {id}")
-    await cnxn.commit()
+    await cursor_email_db.execute(f"update {EMAIL_DB_TABLE_EMAILS} set dates = '{dt_string}' where UniqueIndexField = {id}")
+    await cnxn_email_db.commit()
+
+async def set_record_handling_time_in_telegram_db(cnxn_telegram_db, cursor_telegram_db, id):
+    # пишет в базу TELEGRAM_DB дату/время отправки сообщения
+    dt_string = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    await cursor_telegram_db.execute(f"update {TELEGRAM_DB_TABLE_MESSAGES} set dates = '{dt_string}' where UniqueIndexField = {id}")
+    await cnxn_telegram_db.commit()
+
+
+async def rec_to_error_emails_list(rec):
+    # добавляет несуществующий email адрес в error_emails_list
+    current_time = str(datetime.datetime.now())
+    with open('error-emails-list.log', 'a') as f:
+        f.write(f'{current_time}\t{rec}\n')
+
 
 async def rec_to_log(rec):
     # пишет в лог-файл запись об отправке сообщения
