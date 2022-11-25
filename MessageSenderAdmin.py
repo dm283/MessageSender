@@ -1,5 +1,7 @@
-import sys, configparser, datetime, asyncio, tkinter as tk
+import sys, configparser, asyncio, tkinter as tk
 import requests, aioodbc
+from aiosmtplib import SMTP
+from aioimaplib import aioimaplib
 from cryptography.fernet import Fernet
 from tkinter import ttk
 
@@ -30,6 +32,11 @@ for s in hashed_section_key_list:
 
 ADMIN_BOT_CHAT_ID = str()
 
+to_str = config['admin_credentials']['email'].split('\t#')[0]
+from_str = config['email']['sender_email'].split('\t#')[0]
+TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: MessageSender - тестовое сообщение\n
+Это тестовое сообщение отправленное сервисом MessageSender.""".encode('utf8')
+
 SIGN_IN_FLAG = False
 
 THEME_COLOR = 'White' #'Gainsboro'
@@ -44,44 +51,14 @@ BTN_3_COLOR = 'SlateGray'
 # === TEST FUNCTIONS ===
 async def btn_test_telegram_click():
     # тестирует работу с telegram-сообщениями: подключение к базе данных, отправка тестового сообщения в telegram-чат с админом
-    # await test_telegram_db()  # тестирует подключение к базе данных
-    test_1_res = await test_db_connect('telegram', config['telegram_bot']['db'], config['telegram_bot']['db_connection_string'], 
+    test_1_res = await test_db_connect('telegram_bot', config['telegram_bot']['db'], config['telegram_bot']['db_connection_string'], 
                         [config['telegram_bot']['db_table_messages'], config['telegram_bot']['db_table_chats'], ])
     if test_1_res == 1:
         return 1
     test_2_res = await test_telegram_send_msg_to_admin()  # тестирует отправку сообщения в чат бота с админом
     if test_2_res == 1:
         return 1
-    await asyncio.sleep(1)
     lbl_msg_test['telegram_bot']['text'] = 'Тестирование успешно завершено'
-
-# async def test_telegram_db():
-#     # тестирует подключение к базе данных
-#     lbl_msg_test_telegram['text'] = f"Подключение к базе данных {config['telegram_bot']['db']} ....."
-#     await asyncio.sleep(1)
-#     try:
-#         cnxn = await aioodbc.connect(dsn=config['telegram_bot']['db_connection_string'], loop=loop_admin)
-#         cursor = await cnxn.cursor()
-#         lbl_msg_test_telegram['text'] = f"Подключение к базе данных {config['telegram_bot']['db']}  -  OK"
-#         await asyncio.sleep(1)
-#         lbl_msg_test_telegram['text'] = 'Обращение к таблицам базы данных .....'
-#         try:
-#             await cursor.execute(f"select count(id) from {config['telegram_bot']['db_table_messages']}")
-#             await cursor.fetchall()
-#             await asyncio.sleep(1)
-#             try:
-#                 await cursor.execute(f"select count(id) from {config['telegram_bot']['db_table_chats']}")
-#                 await cursor.fetchall()
-#                 lbl_msg_test_telegram['text'] = f"Обращение к таблицам базы данных  -  OK"
-#                 await asyncio.sleep(1)
-#             except:
-#                 lbl_msg_test_telegram['text'] = f"Обращение к таблице {config['telegram_bot']['db_table_chats'].split('.')[-1]} - ошибка"
-#         except:
-#             lbl_msg_test_telegram['text'] = f"Обращение к таблице {config['telegram_bot']['db_table_messages'].split('.')[-1]} - ошибка"
-#         await cursor.close()
-#         await cnxn.close()
-#     except:
-#         lbl_msg_test_telegram['text'] = f"Подключение к базе данных {config['telegram_bot']['db']}  -  ошибка"
 
 
 async def test_telegram_send_msg_to_admin():
@@ -134,38 +111,25 @@ async def load_admin_bot_chat_id_from_db():
     await cnxn.close()
 
 
-async def btn_test_email_click():
-    print('test email')
-    # тестирует работу с email-сообщениями: подключение к базе данных, smtp и imap серверам, отправка тестового сообщения на email админа
-    #await test_telegram_db()  # тестирует подключение к базе данных
-    await test_db_connect('email', config['email']['db'], config['email']['db_connection_string'], 
-                         [config['email']['db_table_emails'], ])
-    await asyncio.sleep(1)
-    #await test_telegram_send_msg_to_admin()  # тестирует отправку сообщения в чат бота с админом
-    #await asyncio.sleep(1)
-    lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
-
-
 async def test_db_connect(label, db, connection_string, tables):
     # тестирует подключение к базе данных и обращение к таблицам бд
-    lbl_msg_test['telegram_bot']['text'] = f"Подключение к базе данных {db} ....."
+    lbl_msg_test[label]['text'] = f"Подключение к базе данных {db} ....."
     await asyncio.sleep(1)
     try:
         cnxn = await aioodbc.connect(dsn=connection_string, loop=loop_admin)
         cursor = await cnxn.cursor()
-        lbl_msg_test['telegram_bot']['text'] = f"Подключение к базе данных {db} - OK"
+        lbl_msg_test[label]['text'] = f"Подключение к базе данных {db} - OK"
         await asyncio.sleep(1)
-        lbl_msg_test['telegram_bot']['text'] = 'Обращение к таблицам базы данных .....'
+        lbl_msg_test[label]['text'] = 'Обращение к таблицам базы данных .....'
         await asyncio.sleep(1)
-
         for table in tables:
             try:
                 await cursor.execute(f"select count(id) from {table}")
                 await cursor.fetchall()
                 if table == tables[-1]:
-                    lbl_msg_test['telegram_bot']['text'] = f"Обращение к таблицам базы данных - OK"
+                    lbl_msg_test[label]['text'] = f"Обращение к таблицам базы данных - OK"
             except:
-                lbl_msg_test['telegram_bot']['text'] = f"Обращение к таблице {table.split('.')[-1]} - ошибка"
+                lbl_msg_test[label]['text'] = f"Обращение к таблице {table.split('.')[-1]} - ошибка"
                 await cursor.close()
                 await cnxn.close()
                 await asyncio.sleep(1)
@@ -174,56 +138,75 @@ async def test_db_connect(label, db, connection_string, tables):
         await cnxn.close()
         await asyncio.sleep(1)
         return 0
-
     except:
-        lbl_msg_test['telegram_bot']['text'] = f"Подключение к базе данных {db} - ошибка"
+        lbl_msg_test[label]['text'] = f"Подключение к базе данных {db} - ошибка"
         await asyncio.sleep(1)
         return 1
 
-# async def btn_test_smtp_click():
-#     # тестирует подключение к smtp-серверу: доступность smtp-сервера и отправка тестового сообщения
-#     lbl_msg_test_smtp['text'] = f"Подключение к {config['smtp_server']['host']}: {config['smtp_server']['port']} ....."
-#     try:
-#         smtp_client = SMTP(hostname=config['smtp_server']['host'], 
-#                     port=config['smtp_server']['port'], 
-#                     use_tls=True, 
-#                     username=config['smtp_server']['my_address'], 
-#                     password=config['smtp_server']['password'])
-#         await smtp_client.connect()
-#         lbl_msg_test_smtp['text'] = f"Подключение к {config['smtp_server']['host']}: {config['smtp_server']['port']}  -  OK"
-#         await asyncio.sleep(1)
-#         try:
-#             lbl_msg_test_smtp['text'] = f"Отправка тестового сообщения на почту {config['common']['admin_email']} ....."
-#             await smtp_client.sendmail(config['smtp_server']['my_address'], config['common']['admin_email'], TEST_MESSAGE)
-#             lbl_msg_test_smtp['text'] = 'Тестовое сообщение успешно отправлено'
-#             await asyncio.sleep(1)
-#             await smtp_client.quit()
-#             lbl_msg_test_smtp['text'] = 'Тестирование успешно завершено'
-#         except:
-#             lbl_msg_test_smtp['text'] = 'Отправка тестового сообщения  -  ошибка'
-#     except:
-#         lbl_msg_test_smtp['text'] = f"Подключение к {config['smtp_server']['host']}:{config['smtp_server']['port']}  -  ошибка"
 
-# async def btn_test_imap_click():
-#     # тестирует подключение к imap-сервер
-#     lbl_msg_test_imap['text'] = f"Подключение к {config['imap_server']['host']}: {config['imap_server']['port']} ....."
-#     try:
-#         imap_client = aioimaplib.IMAP4_SSL(host=config['imap_server']['host'])  # не ловиться исключение здесь!
-#         await imap_client.wait_hello_from_server()
-#         lbl_msg_test_imap['text'] = f"Подключение к {config['imap_server']['host']}: {config['imap_server']['port']}  -  OK"
-#         await asyncio.sleep(1)
-#         try:
-#             await imap_client.login(config['smtp_server']['my_address'], config['smtp_server']['password'])
-#             await imap_client.select('INBOX')
-#             lbl_msg_test_imap['text'] = f'Чтение входящих сообщений  -  OK'
-#             await asyncio.sleep(1)
-#             await imap_client.close()
-#             await imap_client.logout()
-#             lbl_msg_test_imap['text'] = 'Тестирование успешно завершено'
-#         except:
-#                 lbl_msg_test_imap['text'] = f'Чтение входящих сообщений  -  ошибка'
-#     except:
-#         lbl_msg_test_imap['text'] = f"Подключение к {config['imap_server']['host']}:{config['imap_server']['port']}  -  ошибка"
+async def btn_test_email_click():
+    # тестирует работу с email-сообщениями: подключение к базе данных, smtp и imap серверам, отправка тестового сообщения на email админа
+    test_1_res = await test_db_connect('email', config['email']['db'], config['email']['db_connection_string'], 
+                         [config['email']['db_table_emails'], ])
+    if test_1_res == 1:
+        return 1
+    test_2_res = await test_smtp_server(host=config['email']['smtp_host'], port=config['email']['smtp_port'], 
+                                        sender=config['email']['sender_email'],
+                                        pwd=config['email']['server_password'], receiver=config['admin_credentials']['email'])
+    if test_2_res == 1:
+        return 1
+    test_3_res = await test_imap_server(host=config['email']['imap_host'], port=config['email']['imap_port'], 
+                                        sender=config['email']['sender_email'], pwd=config['email']['server_password'])
+    if test_3_res == 1:
+        return 1
+    lbl_msg_test['telegram_bot']['text'] = 'Тестирование успешно завершено'
+
+
+async def test_smtp_server(host, port, sender, pwd, receiver):
+    # тестирует подключение к smtp-серверу: доступность smtp-сервера и отправка тестового сообщения
+    lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} ....."
+    try:
+        smtp_client = SMTP(hostname=host, 
+                    port=port, 
+                    use_tls=True, 
+                    username=sender, 
+                    password=pwd)
+        await smtp_client.connect()
+        lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} - OK"
+        await asyncio.sleep(1)
+        try:
+            lbl_msg_test['email']['text'] = f"Отправка сообщения {receiver} ....."
+            await smtp_client.sendmail(sender, receiver, TEST_MESSAGE)
+            lbl_msg_test['email']['text'] = f'Отправка сообщения {receiver} - OK'
+            await asyncio.sleep(1)
+            await smtp_client.quit()
+            lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
+        except:
+            lbl_msg_test['email']['text'] = f'Отправка сообщения {receiver} - ошибка'
+    except:
+        lbl_msg_test['email']['text'] = f"Подключение к {host}:{port} - ошибка"
+
+
+async def test_imap_server(host, port, sender, pwd):
+    # тестирует подключение к imap-сервер
+    lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} ....."
+    try:
+        imap_client = aioimaplib.IMAP4_SSL(host=host)  # не ловиться исключение здесь!
+        await imap_client.wait_hello_from_server()
+        lbl_msg_test['email']['text'] = f"Подключение к {host}: {port}  -  OK"
+        await asyncio.sleep(1)
+        try:
+            await imap_client.login(sender, pwd)
+            await imap_client.select('INBOX')
+            lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  OK'
+            await asyncio.sleep(1)
+            await imap_client.close()
+            await imap_client.logout()
+            lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
+        except:
+                lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  ошибка'
+    except:
+        lbl_msg_test['email']['text'] = f"Подключение к {host}:{port}  -  ошибка"
 
 
 # === SAVE CONFIG FUNCTION ===
@@ -250,8 +233,7 @@ async def btn_save_config_click():
         config.write(configfile)
     lbl_config_msg['text'] = f'Конфигурация сохранена в файл {CONFIG_FILE}'
     # после сохранения конфига сообщения о тестах меняются на изначальные
-    lbl_msg_test['telegram_bot']['text'] = ''
-    # lbl_msg_test_db['text'] = '- тестирует подключение к базе данных'
+    lbl_msg_test['telegram_bot']['text'], lbl_msg_test['email']['text'] = '', ''
     # запись обратно в переменные config значений без комментариев
     for s in config.sections():
         for k, v in config.items(s):
@@ -286,7 +268,7 @@ async def show_password(s, k):
 async def show_signin():
     # рисует окно входа
     frm.pack()
-    lbl_sign.place(x=95, y=30)
+    #lbl_sign.place(x=95, y=30)
     lbl_user.place(x=95, y=83)
     ent_user.place(x=95, y=126)
     lbl_password.place(x=95, y=150)
@@ -318,18 +300,11 @@ async def show_admin():
             r += 1
         # положение кнопок тестирования (в окне с наибольшим кол-вом параметров - grid, в прочих - place)
         if s == 'telegram_bot':
-            btn_test['telegram_bot'].place(x=5, y=15)
-            lbl_msg_test['telegram_bot'].place(x=130, y=17)
+            btn_test['telegram_bot'].place(x=5, y=34)
+            lbl_msg_test['telegram_bot'].place(x=130, y=36)
         if s == 'email':
-            btn_test['email'].grid(row = 0, column = 0, padx = 5, pady = 5)    
-            lbl_msg_test['email'].grid(row = 0, column = 1, padx = 5, pady = 5)
-
-        # if s == 'database':
-        #     btn_test_db.grid(row = 0, column = 0, padx = 5, pady = 5)    
-        #     lbl_msg_test_db.grid(row = 0, column = 1, padx = 5, pady = 5)
-        # elif s == 'common':
-        #     btn_test_message_to_admin.place(x=5, y=3)
-        #     lbl_msg_test_admin_chat.place(x=130, y=5)
+            btn_test['email'].grid(row=0, column=0, padx=5, pady=5)    
+            lbl_msg_test['email'].grid(row=0, column=1, padx=5, pady=5)
 
     frm_footer.pack(padx=10, pady=(0, 10), fill='both', expand=True)  
     btn_save_config.grid(row = 0, column = 0)
@@ -342,9 +317,9 @@ async def show_admin():
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('TelegramSender administration panel')
+root.title('MessageSender administration')
 frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
-lbl_sign = tk.Label(master=frm, text='Sign in to TelegramSender', bg=LBL_COLOR, font=("Arial", 15), width=21, height=2)  #bg=LBL_COLOR
+#lbl_sign = tk.Label(master=frm, text='', bg=LBL_COLOR, font=("Arial", 15), width=21, height=2)  #bg=LBL_COLOR
 lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=("Arial", 12), anchor='w', width=25, height=2)
 ent_user = tk.Entry(master=frm, bg=ENT_COLOR, font=("Arial", 12), width=25, )
 lbl_password = tk.Label(master=frm, text='Password', bg=LBL_COLOR, font=("Arial", 12), anchor='w', width=25, height=2)
@@ -358,7 +333,7 @@ btn_sign = tk.Button(master=frm, bg=BTN_COLOR, fg='White', text='Sign in', font=
                     width=22, height=1, command=lambda: loop.create_task(btn_sign_click()))
 lbl_msg_sign = tk.Label(master=frm, bg=LBL_COLOR, fg='PaleVioletRed', font=("Arial", 12), width=25, height=2)
 
-development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:
@@ -375,7 +350,7 @@ if not SIGN_IN_FLAG:
 # ============== window admin
 root_admin = tk.Tk()
 root_admin.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_admin.title('TelegramSender administration panel')
+root_admin.title('MessageSender administration')
 notebook = ttk.Notebook(root_admin)
 
 # в каждом Frame (section) создаются подфреймы с Labels и Enrty (key и key-value)
@@ -414,20 +389,10 @@ btn_test['telegram_bot'] = tk.Button(frm_test['telegram_bot'], text='Тест', 
         command=lambda: loop_admin.create_task(btn_test_telegram_click()))
 lbl_msg_test['telegram_bot'] = tk.Label(frm_test['telegram_bot'], text='', 
         bg=THEME_COLOR, width = 45, anchor='w', )
-
 btn_test['email'] = tk.Button(frm_test['email'], text='Тест', width = 15, 
         command=lambda: loop_admin.create_task(btn_test_email_click()))
 lbl_msg_test['email'] = tk.Label(frm_test['email'], text='', 
         bg=THEME_COLOR, width = 45, anchor='w', )
-
-# btn_test_db = tk.Button(frm_test['database'], text='Тест', width = 15, command=lambda: loop_admin.create_task(btn_test_db_click()))
-# lbl_msg_test_db = tk.Label(frm_test['database'], text ='- тестировать подключение к базе данных',
-#         bg=THEME_COLOR, width = 45, anchor='w', )
-
-# btn_test_message_to_admin = tk.Button(frm_test['common'], text='Тест', width = 15, 
-#         command=lambda: loop_admin.create_task(btn_test_message_to_admin_click()))
-# lbl_msg_test_admin_chat = tk.Label(frm_test['common'], text='- отправить тестовое сообщение администратору бота', 
-#         bg=THEME_COLOR, width = 45, anchor='w', )
 
 # формирование фрейма с общим функционалом (сохранение конфига)
 frm_footer = tk.Frame(root_admin, width=400, height=280, )
