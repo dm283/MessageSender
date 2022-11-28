@@ -36,6 +36,7 @@ TELEGRAM_DB_TABLE_MESSAGES = config['telegram_bot']['db_table_messages'].split('
 TELEGRAM_DB_TABLE_CHATS = config['telegram_bot']['db_table_chats'].split('\t#')[0]  # db.schema.table  таблица с telegram-чатами
 TELEGRAM_DB_CONNECTION_STRING = config['telegram_bot']['db_connection_string'].split('\t#')[0]  # odbc driver system dsn name
 ADMIN_BOT_CHAT_ID = str()  # объявление глобальной константы, которая записывается в функции load_telegram_chats_from_db
+MODE_EMAIL, MODE_TELEGRAM = bool(), bool()
 
 SENDER_EMAIL, EMAIL_SERVER_PASSWORD = config['email']['sender_email'].split('\t#')[0], email_server_password
 SMTP_HOST, SMTP_PORT = config['email']['smtp_host'].split('\t#')[0], config['email']['smtp_port'].split('\t#')[0]
@@ -78,101 +79,109 @@ BTN_FONT = (TK_FONT, 12, 'bold')
 RUNNER_COLOR = 'DodgerBlue'
 
 
-
 # === MESSENGER FUNCTIONS ===
 async def robot():
     # запускает робота
-    global ROBOT_START, ROBOT_STOP, ADMIN_BOT_CHAT_ID
+    global ROBOT_START, ROBOT_STOP, ADMIN_BOT_CHAT_ID, MODE_EMAIL, MODE_TELEGRAM
     if ROBOT_START or ROBOT_STOP:
         return
     ROBOT_START = True  # флаг старта робота, предотвращает запуск нескольких экземпляров робота
+    # режимы обработки сообщений: email, telegram
+    MODE_EMAIL, MODE_TELEGRAM = cbt_msg_type_v1['email'].get(), cbt_msg_type_v1['telegram'].get()
 
     # подключение к базе данных TELEGRAM_DB
-    try:
-        cnxn_telegram_db = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_robot)
-        cursor_telegram_db = await cnxn_telegram_db.cursor()
-        print(f'Создано подключение к базе данных telegram {TELEGRAM_DB}')  ###
-    except Exception as e:
-        print(f"Подключение к базе данных telegram {TELEGRAM_DB} -  ошибка.", e)
-        return 1
+    if MODE_TELEGRAM:
+        try:
+            cnxn_telegram_db = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_robot)
+            cursor_telegram_db = await cnxn_telegram_db.cursor()
+            print(f'Создано подключение к базе данных telegram {TELEGRAM_DB}')  ###
+        except Exception as e:
+            print(f"Подключение к базе данных telegram {TELEGRAM_DB} -  ошибка.", e)
+            return 1
     # подключение к базе данных EMAIL_DB
-    try:
-        cnxn_email_db = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_robot)
-        cursor_email_db = await cnxn_email_db.cursor()
-        print(f'Создано подключение к базе данных email {EMAIL_DB}')  ###
-    except Exception as e:
-        print(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.", e)
-        return 1
+    if MODE_EMAIL:
+        try:
+            cnxn_email_db = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_robot)
+            cursor_email_db = await cnxn_email_db.cursor()
+            print(f'Создано подключение к базе данных email {EMAIL_DB}')  ###
+        except Exception as e:
+            print(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.", e)
+            return 1
     
     # чтение из бд данных о telegram-группах
-    telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor_telegram_db)
-    if telegram_chats == 1:
-        await cursor_telegram_db.close()
-        await cnxn_telegram_db.close()
-        ROBOT_START, ROBOT_STOP = False, False
-        lbl_msg_robot["text"] = 'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
-        return 1
+    if MODE_TELEGRAM:
+        telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor_telegram_db)
+        if telegram_chats == 1:
+            await cursor_telegram_db.close()
+            await cnxn_telegram_db.close()
+            ROBOT_START, ROBOT_STOP = False, False
+            lbl_msg_robot["text"] = 'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+            return 1
 
     lbl_msg_robot["text"] = 'Робот в рабочем режиме'
 
     while not ROBOT_STOP:
         # обработка telegram-сообщений ====================================================================
-        telegram_msg_data_records = await load_records_from_telegram_db(cursor_telegram_db)
-        if telegram_msg_data_records == 1:
-            await cursor_telegram_db.close()
-            await cnxn_telegram_db.close()
-            ROBOT_START, ROBOT_STOP = False, False
-            lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
-            return 1
-        print(telegram_msg_data_records)
-        print()
-        if len(telegram_msg_data_records) > 0:
-            await robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, telegram_msg_data_records, telegram_chats)
-        else:
-            print(f'Нет новых сообщений в базе данных telegram {TELEGRAM_DB}.')  ### test
+        if MODE_TELEGRAM:
+            telegram_msg_data_records = await load_records_from_telegram_db(cursor_telegram_db)
+            if telegram_msg_data_records == 1:
+                await cursor_telegram_db.close()
+                await cnxn_telegram_db.close()
+                ROBOT_START, ROBOT_STOP = False, False
+                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+                return 1
+            print(telegram_msg_data_records)
+            print()
+            if len(telegram_msg_data_records) > 0:
+                await robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, telegram_msg_data_records, telegram_chats)
+            else:
+                print(f'Нет новых сообщений в базе данных telegram {TELEGRAM_DB}.')  ### test
 
         # обработка email-сообщений ======================================================================
-        email_msg_data_records = await load_records_from_email_db(cursor_email_db)
-        if email_msg_data_records == 1:
-            await cursor_email_db.close()
-            await cnxn_email_db.close()
-            ROBOT_START, ROBOT_STOP = False, False
-            lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
-            return 1
-        print(email_msg_data_records)
-        print()
-        if len(email_msg_data_records) > 0:
-            await robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records)
-        else:
-            print(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')  ### test
+        if MODE_EMAIL:
+            email_msg_data_records = await load_records_from_email_db(cursor_email_db)
+            if email_msg_data_records == 1:
+                await cursor_email_db.close()
+                await cnxn_email_db.close()
+                ROBOT_START, ROBOT_STOP = False, False
+                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
+                return 1
+            print(email_msg_data_records)
+            print()
+            if len(email_msg_data_records) > 0:
+                await robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records)
+            else:
+                print(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')  ### test
 
-        #  email - недоставленные сообщения: проверка оповещений, запись в лог и отправка на почту админа
-        undelivereds = await check_undelivered_emails(IMAP_HOST, SENDER_EMAIL, EMAIL_SERVER_PASSWORD)
-        if len(undelivereds) > 0:
-            smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
-            await smtp_client.connect()
-            for u in undelivereds:
-                print(f'undelivered:  {u}')
-                log_rec = f'Недоставлено сообщение, отправленное {u[0]} на несуществующий адрес {u[1]}'
-                await rec_to_log(log_rec)
+            #  email - недоставленные сообщения: проверка оповещений, запись в лог и отправка на почту админа
+            undelivereds = await check_undelivered_emails(IMAP_HOST, SENDER_EMAIL, EMAIL_SERVER_PASSWORD)
+            if len(undelivereds) > 0:
+                smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+                await smtp_client.connect()
+                for u in undelivereds:
+                    print(f'undelivered:  {u}')
+                    log_rec = f'Недоставлено сообщение, отправленное {u[0]} на несуществующий адрес {u[1]}'
+                    await rec_to_log(log_rec)
 
-                # запись несуществующего адреса в error-email-list
-                eel_rec = f'{u[0]}\t{u[1]}'
-                await rec_to_error_emails_list(eel_rec)
-                if u[1] not in ERROR_EMAIL_LIST:
-                    ERROR_EMAIL_LIST.append(u[1])
+                    # запись несуществующего адреса в error-email-list
+                    eel_rec = f'{u[0]}\t{u[1]}'
+                    await rec_to_error_emails_list(eel_rec)
+                    if u[1] not in ERROR_EMAIL_LIST:
+                        ERROR_EMAIL_LIST.append(u[1])
 
-                msg = UNDELIVERED_MESSAGE + log_rec.encode('utf-8')
-                await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
-            await smtp_client.quit()
+                    msg = UNDELIVERED_MESSAGE + log_rec.encode('utf-8')
+                    await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
+                await smtp_client.quit()
             
         await asyncio.sleep(CHECK_DB_PERIOD)
 
     #  действия после остановки робота
-    await cursor_telegram_db.close()
-    await cnxn_telegram_db.close()
-    await cursor_email_db.close()
-    await cnxn_email_db.close()
+    if MODE_TELEGRAM:
+        await cursor_telegram_db.close()
+        await cnxn_telegram_db.close()
+    if MODE_EMAIL:
+        await cursor_email_db.close()
+        await cnxn_email_db.close()
     print("Робот остановлен")
     ROBOT_START, ROBOT_STOP = False, False
     lbl_msg_robot["text"] = 'Робот остановлен'
@@ -376,9 +385,16 @@ async def btn_robot_run_click():
     # кнопка Start robot
     global ROBOT_START, ROBOT_STOP
     if not ROBOT_START:
+        if not (cbt_msg_type_v1['email'].get() or cbt_msg_type_v1['telegram'].get()):
+            lbl_msg_robot["text"] = 'Выберите сообщения для обработки'
+            return 1
         lbl_msg_robot["text"] = 'Запуск робота...'
+        # при запуске робота checkbuttons выбора сообщений деактивируются
+        cbt_msg_type['email']['state'], cbt_msg_type['telegram']['state'] = 'disabled', 'disabled'
         await asyncio.sleep(1)
-    await robot()
+        await robot()
+        # после остановки или незапуска робота checkbuttons выбора сообщений активируются
+        cbt_msg_type['email']['state'], cbt_msg_type['telegram']['state'] = 'normal', 'normal'
 
 async def btn_robot_stop_click():
     # кнопка Stop robot
@@ -474,17 +490,14 @@ lbl_msg_robot = tk.Label(master=frm, bg=LBL_ROBOT_MSG_COLOR, font=(TK_FONT, 10),
 
 lbl_msg_type = tk.Label(master=frm, text='Выбор сообщений для обработки:', bg=THEME_COLOR, font=(TK_FONT, 10, 'bold'), width=27, height=1)
 cbt_msg_type_v1, cbt_msg_type = {}, {}
-cbt_msg_type_v1['email'] = tk.IntVar(value = 0)
-cbt_msg_type_v1['telegram'] = tk.IntVar(value = 0)
+cbt_msg_type_v1['email'] = tk.IntVar(value=0)
+cbt_msg_type_v1['telegram'] = tk.IntVar(value=0)
 cbt_msg_type['email'] = tk.Checkbutton(master=frm, bg=THEME_COLOR, text = 'E-mail сообщения', font=(TK_FONT, 10),
                 variable = cbt_msg_type_v1['email'], 
                 onvalue = 1, offvalue = 0)
 cbt_msg_type['telegram'] = tk.Checkbutton(master=frm, bg=THEME_COLOR, text = 'Telegram сообщения', font=(TK_FONT, 10),
                 variable = cbt_msg_type_v1['telegram'], 
                 onvalue = 1, offvalue = 0)
-# cbt_msg_type['email']['command'] = lambda: loop_robot.create_task()
-# cbt_msg_type['telegram']['command'] = lambda: loop_robot.create_task()
-
 
 async def show_robot():
     # показывает и обновляет окно робота
