@@ -36,6 +36,7 @@ TELEGRAM_DB_TABLE_MESSAGES = config['telegram_bot']['db_table_messages'].split('
 TELEGRAM_DB_TABLE_CHATS = config['telegram_bot']['db_table_chats'].split('\t#')[0]  # db.schema.table  таблица с telegram-чатами
 TELEGRAM_DB_CONNECTION_STRING = config['telegram_bot']['db_connection_string'].split('\t#')[0]  # odbc driver system dsn name
 ADMIN_BOT_CHAT_ID = str()  # объявление глобальной константы, которая записывается в функции load_telegram_chats_from_db
+MODE_EMAIL, MODE_TELEGRAM = bool(), bool()
 
 SENDER_EMAIL, EMAIL_SERVER_PASSWORD = config['email']['sender_email'].split('\t#')[0], email_server_password
 SMTP_HOST, SMTP_PORT = config['email']['smtp_host'].split('\t#')[0], config['email']['smtp_port'].split('\t#')[0]
@@ -64,170 +65,123 @@ ROBOT_STOP = False
 APP_EXIT = False
 SIGN_IN_FLAG = False
 THEME_COLOR = 'Gainsboro'
+TK_FONT = 'Segoe UI'
 LBL_COLOR = THEME_COLOR
+LBL_ROBOT_MSG_COLOR = 'LightGray'
 ENT_COLOR = 'White'
-BTN_COLOR = 'Green'
-BTN_1_COLOR = 'IndianRed'
-BTN_2_COLOR = 'OrangeRed'
-BTN_3_COLOR = 'SlateGray'
+BTN_SIGN_IN_COLOR = 'Green'
+BTN_START_COLOR = 'SeaGreen'
+BTN_STOP_COLOR = 'SlateGray'
+BTN_EXIT_COLOR = 'OrangeRed'
+BTN_TEXT_COLOR = 'White'
+BTN_EXIT_TEXT_COLOR = 'Black'
+BTN_FONT = (TK_FONT, 12, 'bold')
+RUNNER_COLOR = 'DodgerBlue'
 
-# === INTERFACE FUNCTIONS ===
-async def btn_sign_click():
-    # кнопка sign-in
-    global SIGN_IN_FLAG
-    user = ent_user.get()
-    password = ent_password.get()
-    if user == USER_NAME and password == USER_PASSWORD:
-        lbl_msg_sign["text"] = ''
-        SIGN_IN_FLAG = True
-        root.destroy()
-    else:
-        lbl_msg_sign["text"] = 'Incorrect username or password'
-
-async def show_password_signin():
-    # показывает/скрывает пароль в окне входа
-    ent_password['show'] = '' if(cbt_sign_show_pwd_v1.get() == 1) else '*'
-
-async def btn_exit_click():
-    # кнопка Send test email
-    global ROBOT_START, ROBOT_STOP, APP_EXIT
-    if ROBOT_START:
-        lbl_msg_robot["text"] = 'Остановка робота...\nВыход из приложения...'
-        ROBOT_STOP = True
-        APP_EXIT = True
-    else:
-        sys.exit()
-
-async def btn_robot_run_click():
-    # кнопка Start robot
-    global ROBOT_START, ROBOT_STOP
-    if not ROBOT_START:
-        lbl_msg_robot["text"] = 'Запуск робота...'
-    await robot()
-
-async def btn_robot_stop_click():
-    # кнопка Stop robot
-    global ROBOT_START, ROBOT_STOP
-    if ROBOT_START:
-        lbl_msg_robot["text"] = 'Остановка робота...'
-        ROBOT_STOP = True
-
-async def window_signin():
-    # рисует окно входа
-    frm.pack()
-    lbl_sign.place(x=95, y=30)
-    lbl_user.place(x=95, y=83)
-    ent_user.place(x=95, y=126)
-    lbl_password.place(x=95, y=150)
-    ent_password.place(x=95, y=193)
-    cbt_sign_show_pwd.place(x=95, y=220)
-    btn_sign.place(x=95, y=260)
-    lbl_msg_sign.place(x=95, y=310)
-
-async def window_robot():
-    # рисует окно админки
-    frm.pack()
-    lbl_robot.place(x=95, y=30)
-    btn_robot_run.place(x=95, y=93)
-    btn_robot_stop.place(x=95, y=136)
-    btn_exit.place(x=125, y=195)
-    lbl_runner.place(x=95, y=240)
-    lbl_msg_robot.place(x=95, y=280)
 
 # === MESSENGER FUNCTIONS ===
 async def robot():
     # запускает робота
-    global ROBOT_START, ROBOT_STOP, ADMIN_BOT_CHAT_ID
+    global ROBOT_START, ROBOT_STOP, ADMIN_BOT_CHAT_ID, MODE_EMAIL, MODE_TELEGRAM
     if ROBOT_START or ROBOT_STOP:
         return
     ROBOT_START = True  # флаг старта робота, предотвращает запуск нескольких экземпляров робота
+    # режимы обработки сообщений: email, telegram
+    MODE_EMAIL, MODE_TELEGRAM = cbt_msg_type_v1['email'].get(), cbt_msg_type_v1['telegram'].get()
 
     # подключение к базе данных TELEGRAM_DB
-    try:
-        cnxn_telegram_db = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_robot)
-        cursor_telegram_db = await cnxn_telegram_db.cursor()
-        print(f'Создано подключение к базе данных telegram {TELEGRAM_DB}')  ###
-    except Exception as e:
-        print(f"Подключение к базе данных telegram {TELEGRAM_DB} -  ошибка.", e)
-        return 1
+    if MODE_TELEGRAM:
+        try:
+            cnxn_telegram_db = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_robot)
+            cursor_telegram_db = await cnxn_telegram_db.cursor()
+            print(f'Создано подключение к базе данных telegram {TELEGRAM_DB}')  ###
+        except Exception as e:
+            print(f"Подключение к базе данных telegram {TELEGRAM_DB} -  ошибка.", e)
+            return 1
     # подключение к базе данных EMAIL_DB
-    try:
-        cnxn_email_db = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_robot)
-        cursor_email_db = await cnxn_email_db.cursor()
-        print(f'Создано подключение к базе данных email {EMAIL_DB}')  ###
-    except Exception as e:
-        print(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.", e)
-        return 1
+    if MODE_EMAIL:
+        try:
+            cnxn_email_db = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_robot)
+            cursor_email_db = await cnxn_email_db.cursor()
+            print(f'Создано подключение к базе данных email {EMAIL_DB}')  ###
+        except Exception as e:
+            print(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.", e)
+            return 1
     
     # чтение из бд данных о telegram-группах
-    telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor_telegram_db)
-    if telegram_chats == 1:
-        await cursor_telegram_db.close()
-        await cnxn_telegram_db.close()
-        ROBOT_START, ROBOT_STOP = False, False
-        lbl_msg_robot["text"] = 'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
-        return 1
+    if MODE_TELEGRAM:
+        telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor_telegram_db)
+        if telegram_chats == 1:
+            await cursor_telegram_db.close()
+            await cnxn_telegram_db.close()
+            ROBOT_START, ROBOT_STOP = False, False
+            lbl_msg_robot["text"] = 'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+            return 1
 
     lbl_msg_robot["text"] = 'Робот в рабочем режиме'
 
     while not ROBOT_STOP:
         # обработка telegram-сообщений ====================================================================
-        telegram_msg_data_records = await load_records_from_telegram_db(cursor_telegram_db)
-        if telegram_msg_data_records == 1:
-            await cursor_telegram_db.close()
-            await cnxn_telegram_db.close()
-            ROBOT_START, ROBOT_STOP = False, False
-            lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
-            return 1
-        print(telegram_msg_data_records)
-        print()
-        if len(telegram_msg_data_records) > 0:
-            await robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, telegram_msg_data_records, telegram_chats)
-        else:
-            print(f'Нет новых сообщений в базе данных telegram {TELEGRAM_DB}.')  ### test
+        if MODE_TELEGRAM:
+            telegram_msg_data_records = await load_records_from_telegram_db(cursor_telegram_db)
+            if telegram_msg_data_records == 1:
+                await cursor_telegram_db.close()
+                await cnxn_telegram_db.close()
+                ROBOT_START, ROBOT_STOP = False, False
+                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+                return 1
+            print(telegram_msg_data_records)
+            print()
+            if len(telegram_msg_data_records) > 0:
+                await robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, telegram_msg_data_records, telegram_chats)
+            else:
+                print(f'Нет новых сообщений в базе данных telegram {TELEGRAM_DB}.')  ### test
 
         # обработка email-сообщений ======================================================================
-        email_msg_data_records = await load_records_from_email_db(cursor_email_db)
-        if email_msg_data_records == 1:
-            await cursor_email_db.close()
-            await cnxn_email_db.close()
-            ROBOT_START, ROBOT_STOP = False, False
-            lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
-            return 1
-        print(email_msg_data_records)
-        print()
-        if len(email_msg_data_records) > 0:
-            await robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records)
-        else:
-            print(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')  ### test
+        if MODE_EMAIL:
+            email_msg_data_records = await load_records_from_email_db(cursor_email_db)
+            if email_msg_data_records == 1:
+                await cursor_email_db.close()
+                await cnxn_email_db.close()
+                ROBOT_START, ROBOT_STOP = False, False
+                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
+                return 1
+            print(email_msg_data_records)
+            print()
+            if len(email_msg_data_records) > 0:
+                await robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records)
+            else:
+                print(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')  ### test
 
-        #  email - недоставленные сообщения: проверка оповещений, запись в лог и отправка на почту админа
-        undelivereds = await check_undelivered_emails(IMAP_HOST, SENDER_EMAIL, EMAIL_SERVER_PASSWORD)
-        if len(undelivereds) > 0:
-            smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
-            await smtp_client.connect()
-            for u in undelivereds:
-                print(f'undelivered:  {u}')
-                log_rec = f'Недоставлено сообщение, отправленное {u[0]} на несуществующий адрес {u[1]}'
-                await rec_to_log(log_rec)
+            #  email - недоставленные сообщения: проверка оповещений, запись в лог и отправка на почту админа
+            undelivereds = await check_undelivered_emails(IMAP_HOST, SENDER_EMAIL, EMAIL_SERVER_PASSWORD)
+            if len(undelivereds) > 0:
+                smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+                await smtp_client.connect()
+                for u in undelivereds:
+                    print(f'undelivered:  {u}')
+                    log_rec = f'Недоставлено сообщение, отправленное {u[0]} на несуществующий адрес {u[1]}'
+                    await rec_to_log(log_rec)
 
-                # запись несуществующего адреса в error-email-list
-                eel_rec = f'{u[0]}\t{u[1]}'
-                await rec_to_error_emails_list(eel_rec)
-                if u[1] not in ERROR_EMAIL_LIST:
-                    ERROR_EMAIL_LIST.append(u[1])
+                    # запись несуществующего адреса в error-email-list
+                    eel_rec = f'{u[0]}\t{u[1]}'
+                    await rec_to_error_emails_list(eel_rec)
+                    if u[1] not in ERROR_EMAIL_LIST:
+                        ERROR_EMAIL_LIST.append(u[1])
 
-                msg = UNDELIVERED_MESSAGE + log_rec.encode('utf-8')
-                await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
-            await smtp_client.quit()
+                    msg = UNDELIVERED_MESSAGE + log_rec.encode('utf-8')
+                    await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
+                await smtp_client.quit()
             
         await asyncio.sleep(CHECK_DB_PERIOD)
 
     #  действия после остановки робота
-    await cursor_telegram_db.close()
-    await cnxn_telegram_db.close()
-    await cursor_email_db.close()
-    await cnxn_email_db.close()
+    if MODE_TELEGRAM:
+        await cursor_telegram_db.close()
+        await cnxn_telegram_db.close()
+    if MODE_EMAIL:
+        await cursor_email_db.close()
+        await cnxn_email_db.close()
     print("Робот остановлен")
     ROBOT_START, ROBOT_STOP = False, False
     lbl_msg_robot["text"] = 'Робот остановлен'
@@ -399,24 +353,101 @@ async def rec_to_log(rec):
         f.write(f'{current_time}\t{rec}\n')
 
 
+
+# === INTERFACE FUNCTIONS ===
+async def btn_sign_click():
+    # кнопка sign-in
+    global SIGN_IN_FLAG
+    user = ent_user.get()
+    password = ent_password.get()
+    if user == USER_NAME and password == USER_PASSWORD:
+        lbl_msg_sign["text"] = ''
+        SIGN_IN_FLAG = True
+        root.destroy()
+    else:
+        lbl_msg_sign["text"] = 'Incorrect username or password'
+
+async def show_password_signin():
+    # показывает/скрывает пароль в окне входа
+    ent_password['show'] = '' if(cbt_sign_show_pwd_v1.get() == 1) else '*'
+
+async def btn_exit_click():
+    # кнопка Send test email
+    global ROBOT_START, ROBOT_STOP, APP_EXIT
+    if ROBOT_START:
+        lbl_msg_robot["text"] = 'Остановка робота...\nВыход из приложения...'
+        ROBOT_STOP = True
+        APP_EXIT = True
+    else:
+        sys.exit()
+
+async def btn_robot_run_click():
+    # кнопка Start robot
+    global ROBOT_START, ROBOT_STOP
+    if not ROBOT_START:
+        if not (cbt_msg_type_v1['email'].get() or cbt_msg_type_v1['telegram'].get()):
+            lbl_msg_robot["text"] = 'Выберите сообщения для обработки'
+            return 1
+        lbl_msg_robot["text"] = 'Запуск робота...'
+        # при запуске робота checkbuttons выбора сообщений деактивируются
+        cbt_msg_type['email']['state'], cbt_msg_type['telegram']['state'] = 'disabled', 'disabled'
+        await asyncio.sleep(1)
+        await robot()
+        # после остановки или незапуска робота checkbuttons выбора сообщений активируются
+        cbt_msg_type['email']['state'], cbt_msg_type['telegram']['state'] = 'normal', 'normal'
+
+async def btn_robot_stop_click():
+    # кнопка Stop robot
+    global ROBOT_START, ROBOT_STOP
+    if ROBOT_START:
+        lbl_msg_robot["text"] = 'Остановка робота...'
+        ROBOT_STOP = True
+
+async def window_signin():
+    # рисует окно входа
+    frm.pack()
+    lbl_sign.place(x=95, y=30)
+    lbl_user.place(x=95, y=83)
+    ent_user.place(x=95, y=126)
+    lbl_password.place(x=95, y=150)
+    ent_password.place(x=95, y=193)
+    cbt_sign_show_pwd.place(x=95, y=220)
+    btn_sign.place(x=95, y=260)
+    lbl_msg_sign.place(x=95, y=310)
+
+async def window_robot():
+    # рисует окно админки
+    frm.pack()
+    #lbl_robot.place(x=95, y=30)
+    btn_robot_run.place(x=30, y=30)
+    btn_robot_stop.place(x=30, y=78)
+    btn_exit.place(x=60, y=126)
+    lbl_runner.place(x=200, y=187)
+    lbl_msg_robot.place(x=30, y=217)
+
+    lbl_msg_type.place(x=300, y=30)
+    cbt_msg_type['email'].place(x=300, y=63)
+    cbt_msg_type['telegram'].place(x=300, y=93)
+
+
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('TelegramSender')
+root.title('MessageSender')
 frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
-lbl_sign = tk.Label(master=frm, text='Sign in to TelegramSender', bg=LBL_COLOR, font=("Arial", 15), width=21, height=2)
-lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=("Arial", 12), anchor='w', width=25, height=2)
-ent_user = tk.Entry(master=frm, bg=ENT_COLOR, font=("Arial", 12), width=25, )
-lbl_password = tk.Label(master=frm, text='Password', bg=LBL_COLOR, font=("Arial", 12), anchor='w', width=25, height=2)
-ent_password = tk.Entry(master=frm, show='*', bg=ENT_COLOR, font=("Arial", 12), width=25, )
+lbl_sign = tk.Label(master=frm, text='Sign in to MessageSender', bg=LBL_COLOR, font=(TK_FONT, 15), width=21, height=2)
+lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=(TK_FONT, 12), anchor='w', width=25, height=2)
+ent_user = tk.Entry(master=frm, bg=ENT_COLOR, font=(TK_FONT, 12), width=25, )
+lbl_password = tk.Label(master=frm, text='Password', bg=LBL_COLOR, font=(TK_FONT, 12), anchor='w', width=25, height=2)
+ent_password = tk.Entry(master=frm, show='*', bg=ENT_COLOR, font=(TK_FONT, 12), width=25, )
 
 cbt_sign_show_pwd_v1 = tk.IntVar(value = 0)
 cbt_sign_show_pwd = tk.Checkbutton(frm, bg=THEME_COLOR, text='Show password', variable=cbt_sign_show_pwd_v1, onvalue=1, offvalue=0, 
                                     command=lambda: loop.create_task(show_password_signin()))
 
-btn_sign = tk.Button(master=frm, bg=BTN_COLOR, fg='White', text='Sign in', font=("Arial", 12, "bold"), 
+btn_sign = tk.Button(master=frm, bg=BTN_SIGN_IN_COLOR, fg='White', text='Sign in', font=(TK_FONT, 12, "bold"), 
                     width=22, height=1, command=lambda: loop.create_task(btn_sign_click()))
-lbl_msg_sign = tk.Label(master=frm, bg=LBL_COLOR, fg='PaleVioletRed', font=("Arial", 12), width=25, height=2)
+lbl_msg_sign = tk.Label(master=frm, bg=LBL_COLOR, fg='PaleVioletRed', font=(TK_FONT, 12), width=25, height=2)
 
 async def show():
     # показывает и обновляет окно входа
@@ -443,20 +474,30 @@ if not SIGN_IN_FLAG:
 # ============== window robot
 root_robot = tk.Tk()
 root_robot.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_robot.title('TelegramSender')
-frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
-lbl_robot = tk.Label(master=frm, text='TelegramSender', bg=LBL_COLOR, font=("Arial", 15), width=20, height=2)
-
-animation = "░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒"
-lbl_runner = tk.Label(master=frm, fg='DodgerBlue', text="")
-
-btn_robot_run = tk.Button(master=frm, bg=BTN_2_COLOR, fg='White', text='Запуск робота', font=("Arial", 12, "bold"), 
+root_robot.title('MessageSender')
+frm = tk.Frame(bg=THEME_COLOR, width=555, height=290)
+#lbl_robot = tk.Label(master=frm, text='MessageSender', bg=LBL_COLOR, font=("Arial", 15), width=20, height=2)
+btn_robot_run = tk.Button(master=frm, bg=BTN_START_COLOR, fg=BTN_TEXT_COLOR, text='Запуск робота', font=BTN_FONT, 
                     width=22, height=1, command=lambda: loop_robot.create_task(btn_robot_run_click()))
-btn_robot_stop = tk.Button(master=frm, bg=BTN_3_COLOR, fg='White', text='Остановка робота', font=("Arial", 12, "bold"), 
+btn_robot_stop = tk.Button(master=frm, bg=BTN_STOP_COLOR, fg=BTN_TEXT_COLOR, text='Остановка робота', font=BTN_FONT, 
                     width=22, height=1, command=lambda: loop_robot.create_task(btn_robot_stop_click()))
-btn_exit = tk.Button(master=frm, bg=BTN_1_COLOR, fg='Black', text='Выход', font=("Arial", 12), 
+btn_exit = tk.Button(master=frm, bg=BTN_EXIT_COLOR, fg=BTN_EXIT_TEXT_COLOR, text='Выход', font=BTN_FONT, 
                     width=16, height=1, command=lambda: loop_robot.create_task(btn_exit_click()))
-lbl_msg_robot = tk.Label(master=frm, bg=LBL_COLOR, font=("Arial", 10), width=25, height=2)
+animation = "░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒"
+lbl_runner = tk.Label(master=frm, fg=RUNNER_COLOR, text="", font=(TK_FONT, 4))
+lbl_msg_robot = tk.Label(master=frm, bg=LBL_ROBOT_MSG_COLOR, font=(TK_FONT, 10), width=70, height=2)
+
+
+lbl_msg_type = tk.Label(master=frm, text='Выбор сообщений для обработки:', bg=THEME_COLOR, font=(TK_FONT, 10, 'bold'), width=27, height=1)
+cbt_msg_type_v1, cbt_msg_type = {}, {}
+cbt_msg_type_v1['email'] = tk.IntVar(value=0)
+cbt_msg_type_v1['telegram'] = tk.IntVar(value=0)
+cbt_msg_type['email'] = tk.Checkbutton(master=frm, bg=THEME_COLOR, text = 'E-mail сообщения', font=(TK_FONT, 10),
+                variable = cbt_msg_type_v1['email'], 
+                onvalue = 1, offvalue = 0)
+cbt_msg_type['telegram'] = tk.Checkbutton(master=frm, bg=THEME_COLOR, text = 'Telegram сообщения', font=(TK_FONT, 10),
+                variable = cbt_msg_type_v1['telegram'], 
+                onvalue = 1, offvalue = 0)
 
 async def show_robot():
     # показывает и обновляет окно робота
@@ -466,7 +507,8 @@ async def show_robot():
     while True:
         lbl_runner["text"] = animation
         if ROBOT_START:
-            animation = animation[1:] + animation[0]
+            # animation = animation[1:] + animation[0]
+            animation = animation[-1] + animation[:-1]
 
         root_robot.update()
         await asyncio.sleep(.1)
