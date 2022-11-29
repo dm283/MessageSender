@@ -208,7 +208,8 @@ async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_re
                     print(f'адрес {a} в error-list')   ###
                     log_rec = f'адрес {a} в error-list'  ###
             else:
-                log_rec = f'invalid email address {a} [ id = {e[0]} ]'
+                print(f'invalid email address {a} [ id = {e[0]} ]')  ###
+                log_rec = f'invalid email address {a} [ id = {e[0]} ]'  ###
             await rec_to_log(log_rec)
         await set_record_handling_time_in_email_db(cnxn_email_db, cursor_email_db, id=e[0])
         print('Запись из EMAIL_DB обработана')  ####
