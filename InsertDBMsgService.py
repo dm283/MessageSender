@@ -1,7 +1,5 @@
-import sys, os, configparser, re, datetime, json, asyncio, email, tkinter as tk
-import requests, aioodbc
-from aiosmtplib import SMTP
-from aioimaplib import aioimaplib
+import sys, os, configparser, re, datetime, asyncio, tkinter as tk
+import aioodbc
 from cryptography.fernet import Fernet
 from tkinter import ttk
 
@@ -150,7 +148,7 @@ async def btn_email_insert_db_click():
 async def btn_telegram_insert_db_click():
     # Кнопка записи в бд telegram-сообщения
     msg_text = ent['telegram']['msg_text'].get(1.0, "end-1c").strip()
-    adrto = ent['telegram']['to'].get().strip()
+    adrto = cmbx['telegram']['to'].get().strip()
 
     if adrto == '' or msg_text == '':
         lbl_msg_send['telegram']['text'] = 'Заполните все поля telegram сообщения'
@@ -232,6 +230,8 @@ async def btn_load_records_from_email_db_click():
             elif l == 'textemail' and len(text_str) > 37:
                 text_str = text_str[:37] + ' ...'
 
+            # Для отрисовки пустой ячейки, иначе рисуются предыдущие значения
+            text_str = '' if not text_str else text_str
             
             lbl_message['email'][l][i]['text'] = text_str
             lbl_message['email'][l][i].grid(row=i+1, column=column, sticky='w', padx=1, pady=1)
@@ -285,6 +285,8 @@ async def btn_load_records_from_telegram_db_click():
             elif l == 'msg_text' and len(text_str) > 57:
                 text_str = text_str[:57] + ' ...'
 
+            # Для отрисовки пустой ячейки, иначе рисуются предыдущие значения
+            text_str = '' if not text_str else text_str
 
             lbl_message['telegram'][l][i]['text'] = text_str
             lbl_message['telegram'][l][i].grid(row=i+1, column=column, sticky='w', padx=1, pady=1)
@@ -329,6 +331,9 @@ async def btn_slice_email_msg_click(direction: int):
                 text_str = text_str[:17] + ' ...'
             elif l == 'textemail' and len(text_str) > 37:
                 text_str = text_str[:37] + ' ...'          
+
+            # Для отрисовки пустой ячейки, иначе рисуются предыдущие значения
+            text_str = '' if not text_str else text_str
 
             lbl_message['email'][l][row-1]['text'] = text_str
             column += 1
@@ -377,6 +382,9 @@ async def btn_slice_telegram_msg_click(direction: int):
             elif l == 'msg_text' and len(text_str) > 57:
                 text_str = text_str[:57] + ' ...'
 
+            # Для отрисовки пустой ячейки, иначе рисуются предыдущие значения
+            text_str = '' if not text_str else text_str
+
             lbl_message['telegram'][l][row-1]['text'] = text_str
             column += 1
     # Если строк в срезе менее 10, оставшиеся заполняются пустыми значениями
@@ -403,8 +411,35 @@ async def show_signin():
         await asyncio.sleep(.1)
 
 
+async def load_from_telegram_db(event):
+    # выборка записей из базы данных TELEGRAM_DB
+    try:
+        cnxn = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_msg_service)
+        cursor = await cnxn.cursor()
+    except:
+        print(f"Подключение к базе данных {TELEGRAM_DB} -  ошибка.")
+        await cursor.close()
+        await cnxn.close()
+        return 1
+
+    entity_type = cmbx['telegram']['entity'].get()
+    entity_type = 'group' if entity_type == 'Telegram-группа' else 'user'
+    try:
+        query = f"select distinct entity_name from {TELEGRAM_DB_TABLE_CHATS} where entity_type = '{entity_type}' and is_active"
+        await cursor.execute(query)
+        res = await cursor.fetchall()
+        await cursor.close()
+        await cnxn.close()
+        cmbx['telegram']['to']['values'] = [v[0] for v in res]
+    except:
+        print(f'Ошибка чтения из базы данных {TELEGRAM_DB}.')   ###
+        await cursor.close()
+        await cnxn.close()
+        return 1
+
+
 async def show_send_msg():
-    # рисует окно записи сообщений
+    # рисует окно записи сообщений    
     notebook.pack(padx=10, pady=10, fill='both', expand=True)
 
     # Вкладка email-сообщений ============================
@@ -438,9 +473,9 @@ async def show_send_msg():
     frm_msg_form['telegram'].pack(padx=5, pady=(5, 0), fill='both', expand=True)
     lbl['telegram']['description'].grid(row=0, columnspan=2, sticky='w', padx=5, pady=5)
     lbl['telegram']['entity'].grid(row=1, column=0, sticky='w', padx=5, pady=5)
-    ent['telegram']['entity'].grid(row=1, column=1, sticky='w', padx=5, pady=5)
+    cmbx['telegram']['entity'].grid(row=1, column=1, sticky='w', padx=5, pady=5)
     lbl['telegram']['to'].grid(row=2, column=0, sticky='w', padx=5, pady=5)
-    ent['telegram']['to'].grid(row=2, column=1, sticky='w', padx=5, pady=5)
+    cmbx['telegram']['to'].grid(row=2, column=1, sticky='w', padx=5, pady=5)
     ent['telegram']['msg_text'].grid(row=3, columnspan=2, sticky='w', padx=5, pady=5)
 
     frm_sending['telegram'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
@@ -480,7 +515,7 @@ btn_sign = tk.Button(master=frm, bg=BTN_SIGN_IN_COLOR, fg='White', text='Sign in
 lbl_msg_sign = tk.Label(master=frm, bg=LBL_COLOR, fg='PaleVioletRed', font=(TK_FONT, 12), width=25, height=2)
 
 
-development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:
@@ -508,7 +543,8 @@ ent_form_width = 107  # Фрейм №1  -  entry полей ввода данн
 ent_form_msg_width = 125  # Фрейм №1  -  text сообщения
 lbl_header_title_width = 28  # Фрейм №3  -  заголовок База данных ... сообщений
 btn_move_width = 12  #  Фрейм №3 -  кнопки перемещения по срезам сообщений
-frm_sent_messages_height = 230  #  Фрейм №4  -  высота фрейма таблицы сообщений
+frm_sent_messages_height = 230  #  Фрейм №4  -  фрейм таблицы сообщений
+telegram_combo_width = 104   #  Фрейм №1 telegram - comboboxы
 
 # Вкладка email-сообщений =============================================================================
 frm['email'] = tk.Frame(notebook, bg=THEME_COLOR, width=400, )
@@ -567,6 +603,7 @@ for l in [('id', 5, 'id'), ('adrto', 20, 'Адреса'), ('subj', 20, 'Тема
 
 # Вкладка telegram-сообщений =============================================================================
 frm['telegram'] = tk.Frame(notebook, bg=THEME_COLOR, width=400, )
+cmbx, cmbx['telegram'] = {}, {}
 
 # === Фрейм №1 - формы сообщения ===
 frm_msg_form['telegram'], lbl['telegram'], ent['telegram'] = tk.Frame(frm['telegram'], bg=THEME_COLOR, width=400, ), {}, {}
@@ -576,10 +613,22 @@ lbl['telegram']['description'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COL
 # Виджеты форм сообщения
 lbl['telegram']['entity'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR,
             text = 'Тип получателя:', width=lbl_form_width, anchor='w', )
-ent['telegram']['entity'] = tk.Entry(frm_msg_form['telegram'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
+
+var_telegram_entity_type = tk.StringVar()
+entity_type_list = ['Telegram-группа', 'Telegram-пользователь']
+cmbx['telegram']['entity'] = ttk.Combobox(frm_msg_form['telegram'], textvariable=var_telegram_entity_type, 
+    width=telegram_combo_width)
+cmbx['telegram']['entity']['values'] = entity_type_list
+cmbx['telegram']['entity']['state'] = 'readonly'
+cmbx['telegram']['entity'].bind('<<ComboboxSelected>>', lambda event: asyncio.ensure_future(load_from_telegram_db(event)))
+
+var_telegram_to = tk.StringVar()
+cmbx['telegram']['to'] = ttk.Combobox(frm_msg_form['telegram'], textvariable=var_telegram_to, 
+    width=telegram_combo_width, )
+cmbx['telegram']['to']['state'] = 'readonly'
+
 lbl['telegram']['to'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR,
             text = 'Кому:', width=lbl_form_width, anchor='w', )
-ent['telegram']['to'] = tk.Entry(frm_msg_form['telegram'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
 ent['telegram']['msg_text'] = tk.Text(frm_msg_form['telegram'], width=ent_form_msg_width, height=3, 
     highlightthickness=1, highlightcolor = "Gainsboro", font=((TK_FONT, 9)))
 
