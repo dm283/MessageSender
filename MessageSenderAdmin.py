@@ -39,13 +39,10 @@ TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: MessageSender - те
 
 SIGN_IN_FLAG = False
 
-THEME_COLOR = 'White' #'Gainsboro'
+THEME_COLOR = 'Gainsboro'
 LBL_COLOR = THEME_COLOR
 ENT_COLOR = 'White'
 BTN_COLOR = 'Green'
-BTN_1_COLOR = 'IndianRed'
-BTN_2_COLOR = 'OrangeRed'
-BTN_3_COLOR = 'SlateGray'
 
 
 # === TEST FUNCTIONS ===
@@ -268,14 +265,14 @@ async def show_password(s, k):
 async def show_signin():
     # рисует окно входа
     frm.pack()
-    #lbl_sign.place(x=95, y=30)
-    lbl_user.place(x=95, y=83)
-    ent_user.place(x=95, y=126)
-    lbl_password.place(x=95, y=150)
-    ent_password.place(x=95, y=193)
-    cbt_sign_show_pwd.place(x=95, y=220)
-    btn_sign.place(x=95, y=260)
-    lbl_msg_sign.place(x=95, y=310)
+    lbl_user.place(x=95, y=43)
+    ent_user.place(x=95, y=86)
+    lbl_password.place(x=95, y=110)
+    ent_password.place(x=95, y=153)
+    cbt_sign_show_pwd.place(x=95, y=180)
+    btn_sign.place(x=95, y=220)
+    lbl_msg_sign.place(x=95, y=270)
+
     while not SIGN_IN_FLAG:
         root.update()
         await asyncio.sleep(.1)

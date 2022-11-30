@@ -101,6 +101,21 @@ async def show_password_signin():
 
 async def btn_email_insert_db_click():
     # Кнопка записи в бд email-сообщения
+    adrto = ent['email']['to'].get().strip()
+    subj = ent['email']['subj'].get().strip()
+    textemail = ent['email']['text'].get(1.0, "end-1c").strip()
+    
+    if adrto == '' or subj == '' or textemail == '':
+        lbl_msg_send['email']['text'] = 'Заполните все поля e-mail сообщения.'
+        return 1
+
+    # Проверка корректности e-mail адресов
+    addrs = adrto.split(';')
+    for a in addrs:
+        if not (re.fullmatch(REGEX_EMAIL_VALID, a)):
+            lbl_msg_send['email']['text'] = f'Некорректный e-mail адрес {a}.'
+            return 1
+
     try:
         cnxn = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_msg_service)
         cursor = await cnxn.cursor()
@@ -111,9 +126,7 @@ async def btn_email_insert_db_click():
     lbl_msg_send['email']['text'] = f'Запись в базу данных .....'
     await asyncio.sleep(0.5)
 
-    subj = ent['email']['subj'].get()
-    textemail = ent['email']['text'].get(1.0, "end-1c")
-    adrto = ent['email']['to'].get()
+    
     datep = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, datep) values
                 ('{subj}', '{textemail}', '{adrto}', '{datep}') """
@@ -131,6 +144,13 @@ async def btn_email_insert_db_click():
 
 async def btn_telegram_insert_db_click():
     # Кнопка записи в бд telegram-сообщения
+    msg_text = ent['telegram']['text'].get(1.0, "end-1c").strip()
+    adrto = ent['telegram']['to'].get().strip()
+
+    if adrto == '' or msg_text == '':
+        lbl_msg_send['telegram']['text'] = 'Заполните все поля telegram сообщения'
+        return 1
+
     try:
         cnxn = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_msg_service)
         cursor = await cnxn.cursor()
@@ -141,8 +161,6 @@ async def btn_telegram_insert_db_click():
     lbl_msg_send['telegram']['text'] = f'Запись в базу данных .....'
     await asyncio.sleep(0.5)
 
-    msg_text = ent['telegram']['text'].get(1.0, "end-1c")
-    adrto = ent['telegram']['to'].get()
     datep = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     query = f""" insert into {TELEGRAM_DB_TABLE_MESSAGES} (msg_text, adrto, datep) values
                 ('{msg_text}', '{adrto}', '{datep}') """
@@ -166,13 +184,13 @@ async def btn_slice_msg_click(msg_type, move_type):
 async def show_signin():
     # рисует окно входа
     frm.pack()
-    lbl_user.place(x=95, y=83)
-    ent_user.place(x=95, y=126)
-    lbl_password.place(x=95, y=150)
-    ent_password.place(x=95, y=193)
-    cbt_sign_show_pwd.place(x=95, y=220)
-    btn_sign.place(x=95, y=260)
-    lbl_msg_sign.place(x=95, y=310)
+    lbl_user.place(x=95, y=43)
+    ent_user.place(x=95, y=86)
+    lbl_password.place(x=95, y=110)
+    ent_password.place(x=95, y=153)
+    cbt_sign_show_pwd.place(x=95, y=180)
+    btn_sign.place(x=95, y=220)
+    lbl_msg_sign.place(x=95, y=270)
 
     while not SIGN_IN_FLAG:
         root.update()
@@ -180,7 +198,7 @@ async def show_signin():
 
 
 async def show_send_msg():
-    # рисует окно отправки сообщений
+    # рисует окно записи сообщений
     notebook.pack(padx=10, pady=10, fill='both', expand=True)
 
     # Вкладка email-сообщений ============================
@@ -227,8 +245,8 @@ async def show_send_msg():
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('SendMessageService')
-frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
+root.title('InsertDBMsgService')
+frm = tk.Frame(bg=THEME_COLOR, width=400, height=350)
 #lbl_sign = tk.Label(master=frm, text='Sign in to ', bg=LBL_COLOR, font=(TK_FONT, 15), width=21, height=2)
 lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=(TK_FONT, 12), anchor='w', width=25, height=2)
 ent_user = tk.Entry(master=frm, bg=ENT_COLOR, font=(TK_FONT, 12), width=25, )
@@ -244,7 +262,7 @@ btn_sign = tk.Button(master=frm, bg=BTN_SIGN_IN_COLOR, fg='White', text='Sign in
 lbl_msg_sign = tk.Label(master=frm, bg=LBL_COLOR, fg='PaleVioletRed', font=(TK_FONT, 12), width=25, height=2)
 
 
-development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:
@@ -261,7 +279,7 @@ if not SIGN_IN_FLAG:
 # ============== window send_message
 root_send_msg = tk.Tk()
 root_send_msg.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_send_msg.title('SendMessageService')
+root_send_msg.title('InsertDBMsgService')
 notebook = ttk.Notebook(root_send_msg)
 
 frm, frm_msg_form, frm_sending, lbl, ent = {}, {}, {}, {}, {}
@@ -272,11 +290,11 @@ frm['email'] = tk.Frame(notebook, bg=THEME_COLOR, width=400, )
 # === Фрейм №1 - формы сообщения ===
 frm_msg_form['email'], lbl['email'], ent['email'] = tk.Frame(frm['email'], bg=THEME_COLOR, width=400, ), {}, {}
 # Описание раздела
-lbl['email']['description'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR, text='Отправка e-mail сообщений', 
+lbl['email']['description'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR, text='Запись в базу данных e-mail сообщений', 
                                         font=('Segoe UI', 10, 'bold'))
 # Виджеты форм сообщения
 lbl['email']['to'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
-            text = 'Кому:', width=13, anchor='w', )
+            text = 'Адреса (через ;):', width=13, anchor='w', )
 ent['email']['to'] = tk.Entry(frm_msg_form['email'], width=72, highlightthickness=1, highlightcolor = "Gainsboro", )
 lbl['email']['subj'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
             text = 'Тема:', width=13, anchor='w', )
@@ -298,7 +316,7 @@ lbl_msg_send['email'] = tk.Label(frm_sending['email'], text='',
 frm_sent_msg_header, lbl_header_title, btn_prev, btn_next = {}, {}, {}, {}
 
 frm_sent_msg_header['email'] = tk.Frame(frm['email'], width=400, height=280, )
-lbl_header_title['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, text='Отправленные e-mail сообщения', 
+lbl_header_title['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, text='База данных e-mail сообщений', 
                                         font=('Segoe UI', 10, 'bold'))
 btn_prev['email'] = tk.Button(frm_sent_msg_header['email'], text='<', width = 15, 
                     command=lambda: loop_msg_service.create_task(btn_slice_msg_click('email', 'prev')))
@@ -320,7 +338,7 @@ frm['telegram'] = tk.Frame(notebook, bg=THEME_COLOR, width=400, )
 # === Фрейм №1 - формы сообщения ===
 frm_msg_form['telegram'], lbl['telegram'], ent['telegram'] = tk.Frame(frm['telegram'], bg=THEME_COLOR, width=400, ), {}, {}
 # Описание раздела
-lbl['telegram']['description'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR, text='Отправка telegram сообщений', 
+lbl['telegram']['description'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR, text='Запись в базу данных telegram сообщений', 
                                         font=('Segoe UI', 10, 'bold'))
 # Виджеты форм сообщения
 lbl['telegram']['entity'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR,
@@ -335,7 +353,7 @@ ent['telegram']['text'] = tk.Text(frm_msg_form['telegram'], width=90, height=3, 
 # === Фрейм №2 - кнопка отправки и информационные сообщения ===
 frm_sending['telegram'] = tk.Frame(frm['telegram'], bg=THEME_COLOR, width=400, )
 
-btn_send['telegram'] = tk.Button(frm_sending['telegram'], text='Отправить', width = 15, 
+btn_send['telegram'] = tk.Button(frm_sending['telegram'], text='Записать в БД', width = 15, 
         command=lambda: loop_msg_service.create_task(btn_telegram_insert_db_click()))
 lbl_msg_send['telegram'] = tk.Label(frm_sending['telegram'], text='', 
         bg=THEME_COLOR, width = 45, anchor='w', )

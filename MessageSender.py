@@ -407,14 +407,13 @@ async def btn_robot_stop_click():
 async def window_signin():
     # рисует окно входа
     frm.pack()
-    lbl_sign.place(x=95, y=30)
-    lbl_user.place(x=95, y=83)
-    ent_user.place(x=95, y=126)
-    lbl_password.place(x=95, y=150)
-    ent_password.place(x=95, y=193)
-    cbt_sign_show_pwd.place(x=95, y=220)
-    btn_sign.place(x=95, y=260)
-    lbl_msg_sign.place(x=95, y=310)
+    lbl_user.place(x=95, y=43)
+    ent_user.place(x=95, y=86)
+    lbl_password.place(x=95, y=110)
+    ent_password.place(x=95, y=153)
+    cbt_sign_show_pwd.place(x=95, y=180)
+    btn_sign.place(x=95, y=220)
+    lbl_msg_sign.place(x=95, y=270)
 
 async def window_robot():
     # рисует окно админки
