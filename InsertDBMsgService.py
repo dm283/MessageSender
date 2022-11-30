@@ -62,6 +62,7 @@ if os.path.exists(error_email_list_path):
             ERROR_EMAIL_LIST.append(l.split('\t')[-1].strip())
 
 RECORDS_EMAIL, RECORDS_TELEGRAM = [], []  # записи из базы данных сообщений
+RECORDS_EMAIL_POINTER, RECORDS_TELEGRAM_POINTER = 0, 0  # указатель срезов записей (по блокам 10 штук)
 
 ROBOT_START = False
 ROBOT_STOP = False
@@ -105,7 +106,7 @@ async def btn_email_insert_db_click():
     # Кнопка записи в бд email-сообщения
     adrto = ent['email']['to'].get().strip()
     subj = ent['email']['subj'].get().strip()
-    textemail = ent['email']['text'].get(1.0, "end-1c").strip()
+    textemail = ent['email']['msg_text'].get(1.0, "end-1c").strip()
     
     if adrto == '' or subj == '' or textemail == '':
         lbl_msg_send['email']['text'] = 'Заполните все поля e-mail сообщения.'
@@ -148,7 +149,7 @@ async def btn_email_insert_db_click():
 
 async def btn_telegram_insert_db_click():
     # Кнопка записи в бд telegram-сообщения
-    msg_text = ent['telegram']['text'].get(1.0, "end-1c").strip()
+    msg_text = ent['telegram']['msg_text'].get(1.0, "end-1c").strip()
     adrto = ent['telegram']['to'].get().strip()
 
     if adrto == '' or msg_text == '':
@@ -205,23 +206,185 @@ async def btn_load_records_from_email_db_click():
         await cnxn.close()
         return 1
 
+    lbl_header_records_numbers['email']['text'] = f'1-10 из {len(RECORDS_EMAIL)}'
+    
+    # Отрисовка шапки таблицы сообщений
     c = 0
     for l in ['id', 'adrto', 'subj', 'textemail', 'datep', 'dates']:
         lbl_sent_messages_header['email'][l].grid(row=0, column=c, sticky='w', padx=1, pady=1)
         c += 1
 
+    # Заполнение таблицы сообщений
     cnt_rows = len(RECORDS_EMAIL) if len(RECORDS_EMAIL) < 10 else 10
     for i in range(cnt_rows):
-        c = 0
+        column = 0
         for l in ['id', 'adrto', 'subj', 'textemail', 'datep', 'dates']:
-            lbl_message['email'][l][i]['text'] = RECORDS_EMAIL[i][c]
-            lbl_message['email'][l][i].grid(row=i+1, column=c, sticky='w', padx=1, pady=1)
-            c += 1
+
+            text_str = RECORDS_EMAIL[i][column]
+            # Замена переноса строк на пробелы
+            if l in ('adrto', 'subj', 'textemail') and ('\n' in text_str or '\r' in text_str):
+                text_str = text_str.replace('\n', ' ').replace('\r', ' ')
+            # Обрезка длинных строк
+            if l == 'adrto' and len(text_str) > 19:
+                text_str = text_str[:19] + ' ...'
+            elif l == 'subj' and len(text_str) > 17:
+                text_str = text_str[:17] + ' ...'
+            elif l == 'textemail' and len(text_str) > 37:
+                text_str = text_str[:37] + ' ...'
+
+            
+            lbl_message['email'][l][i]['text'] = text_str
+            lbl_message['email'][l][i].grid(row=i+1, column=column, sticky='w', padx=1, pady=1)
+            column += 1
 
 
-async def btn_slice_msg_click(msg_type, move_type):
+async def btn_load_records_from_telegram_db_click():
+    # выборка записей из базы данных TELEGRAM_DB
+    global RECORDS_TELEGRAM
+    try:
+        cnxn = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_msg_service)
+        cursor = await cnxn.cursor()
+    except:
+        print(f"Подключение к базе данных {TELEGRAM_DB} -  ошибка.")
+        await cursor.close()
+        await cnxn.close()
+        return 1
+    try:
+        await cursor.execute(f"""select UniqueIndexField, adrto, msg_text, datep, dates 
+            from {TELEGRAM_DB_TABLE_MESSAGES} order by datep desc""")
+        RECORDS_TELEGRAM = await cursor.fetchall()  # список кортежей
+        await cursor.close()
+        await cnxn.close()
+    except Exception as e:
+        print(f'Ошибка чтения из базы данных EMAIL_DB {TELEGRAM_DB}.', e)
+        await cursor.close()
+        await cnxn.close()
+        return 1
+
+    lbl_header_records_numbers['telegram']['text'] = f'1-10 из {len(RECORDS_TELEGRAM)}'
+    
+    # Отрисовка шапки таблицы сообщений
+    c = 0
+    for l in ['id', 'adrto', 'msg_text', 'datep', 'dates']:
+        lbl_sent_messages_header['telegram'][l].grid(row=0, column=c, sticky='w', padx=1, pady=1)
+        c += 1
+
+    # Заполнение таблицы сообщений
+    cnt_rows = len(RECORDS_TELEGRAM) if len(RECORDS_TELEGRAM) < 10 else 10
+    for i in range(cnt_rows):
+        column = 0
+        for l in ['id', 'adrto', 'msg_text', 'datep', 'dates']:
+            
+            text_str = RECORDS_TELEGRAM[i][column]
+            # Замена переноса строк на пробелы
+            if l in ('adrto', 'msg_text') and ('\n' in text_str or '\r' in text_str):
+                text_str = text_str.replace('\n', ' ').replace('\r', ' ')
+            # Обрезка длинных строк
+            if l == 'adrto' and len(text_str) > 21:
+                text_str = text_str[:21] + ' ...'
+            elif l == 'msg_text' and len(text_str) > 57:
+                text_str = text_str[:57] + ' ...'
+
+
+            lbl_message['telegram'][l][i]['text'] = text_str
+            lbl_message['telegram'][l][i].grid(row=i+1, column=column, sticky='w', padx=1, pady=1)
+            column += 1
+
+
+async def btn_slice_email_msg_click(direction: int):
     # Кнопки перемещения по отправленным сообщениям
-    print(msg_type, move_type)
+    global RECORDS_EMAIL_POINTER
+
+    # Если сообщений < 10 передвижения по срезам нет
+    if len(RECORDS_EMAIL) < 10:
+        return 0
+    # Ограничение изменения RECORDS_EMAIL_POINTER
+    if (RECORDS_EMAIL_POINTER + direction) < 0:
+        return 0
+    if (RECORDS_EMAIL_POINTER + direction) >= len(RECORDS_EMAIL)/10:
+        return 0
+
+    RECORDS_EMAIL_POINTER += direction
+
+    # Обновление таблицы сообщений
+    cnt_rows = len(RECORDS_EMAIL) if len(RECORDS_EMAIL) < 10 else 10
+    row = 0
+    start = 10*RECORDS_EMAIL_POINTER
+    finish = cnt_rows+10*RECORDS_EMAIL_POINTER
+    if finish > len(RECORDS_EMAIL):
+        finish = len(RECORDS_EMAIL)
+    for i in range(start, finish):
+        row += 1
+        column = 0
+        for l in ['id', 'adrto', 'subj', 'textemail', 'datep', 'dates']:
+
+            text_str = RECORDS_EMAIL[i][column]
+            # Замена переноса строк на пробелы
+            if l in ('adrto', 'subj', 'textemail') and ('\n' in text_str or '\r' in text_str):
+                text_str = text_str.replace('\n', ' ').replace('\r', ' ')
+            # Обрезка длинных строк
+            if l == 'adrto' and len(text_str) > 19:
+                text_str = text_str[:19] + ' ...'
+            elif l == 'subj' and len(text_str) > 17:
+                text_str = text_str[:17] + ' ...'
+            elif l == 'textemail' and len(text_str) > 37:
+                text_str = text_str[:37] + ' ...'          
+
+            lbl_message['email'][l][row-1]['text'] = text_str
+            column += 1
+    # Если строк в срезе менее 10, оставшиеся заполняются пустыми значениями
+    for r in range(row, 10):
+        for l in ['id', 'adrto', 'subj', 'textemail', 'datep', 'dates']:
+            lbl_message['email'][l][r]['text'] = ''
+
+    lbl_header_records_numbers['email']['text'] = f'{start+1}-{finish} из {len(RECORDS_EMAIL)}'
+
+
+async def btn_slice_telegram_msg_click(direction: int):
+    # Кнопки перемещения по отправленным сообщениям
+    global RECORDS_TELEGRAM_POINTER
+
+    # Если сообщений < 10 передвижения по срезам нет
+    if len(RECORDS_TELEGRAM) < 10:
+        return 0
+    # Ограничение изменения RECORDS_EMAIL_POINTER
+    if (RECORDS_TELEGRAM_POINTER + direction) < 0:
+        return 0
+    if (RECORDS_TELEGRAM_POINTER + direction) >= len(RECORDS_TELEGRAM)/10:
+        return 0
+
+    RECORDS_TELEGRAM_POINTER += direction
+
+    # Обновление таблицы сообщений
+    cnt_rows = len(RECORDS_TELEGRAM) if len(RECORDS_TELEGRAM) < 10 else 10
+    row = 0
+    start = 10*RECORDS_TELEGRAM_POINTER
+    finish = cnt_rows+10*RECORDS_TELEGRAM_POINTER
+    if finish > len(RECORDS_TELEGRAM):
+        finish = len(RECORDS_TELEGRAM)
+    for i in range(start, finish):
+        row += 1
+        column = 0
+        for l in ['id', 'adrto', 'msg_text', 'datep', 'dates']:
+            
+            text_str = RECORDS_TELEGRAM[i][column]
+            # Замена переноса строк на пробелы
+            if l in ('adrto', 'msg_text') and ('\n' in text_str or '\r' in text_str):
+                text_str = text_str.replace('\n', ' ').replace('\r', ' ')
+            # Обрезка длинных строк
+            if l == 'adrto' and len(text_str) > 21:
+                text_str = text_str[:21] + ' ...'
+            elif l == 'msg_text' and len(text_str) > 57:
+                text_str = text_str[:57] + ' ...'
+
+            lbl_message['telegram'][l][row-1]['text'] = text_str
+            column += 1
+    # Если строк в срезе менее 10, оставшиеся заполняются пустыми значениями
+    for r in range(row, 10):
+        for l in ['id', 'adrto', 'msg_text', 'datep', 'dates']:
+            lbl_message['telegram'][l][r]['text'] = ''
+
+    lbl_header_records_numbers['telegram']['text'] = f'{start+1}-{finish} из {len(RECORDS_TELEGRAM)}'
 
 
 async def show_signin():
@@ -253,7 +416,7 @@ async def show_send_msg():
     ent['email']['to'].grid(row=1, column=1, sticky='w', padx=5, pady=5)
     lbl['email']['subj'].grid(row=2, column=0, sticky='w', padx=5, pady=5)
     ent['email']['subj'].grid(row=2, column=1, sticky='w', padx=5, pady=5)
-    ent['email']['text'].grid(row=3, columnspan=2, sticky='w', padx=5, pady=5)
+    ent['email']['msg_text'].grid(row=3, columnspan=2, sticky='w', padx=5, pady=5)
 
     frm_sending['email'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
     btn_send['email'].grid(row=0, column=0, padx=5, pady=5)    
@@ -278,11 +441,20 @@ async def show_send_msg():
     ent['telegram']['entity'].grid(row=1, column=1, sticky='w', padx=5, pady=5)
     lbl['telegram']['to'].grid(row=2, column=0, sticky='w', padx=5, pady=5)
     ent['telegram']['to'].grid(row=2, column=1, sticky='w', padx=5, pady=5)
-    ent['telegram']['text'].grid(row=3, columnspan=2, sticky='w', padx=5, pady=5)
+    ent['telegram']['msg_text'].grid(row=3, columnspan=2, sticky='w', padx=5, pady=5)
 
     frm_sending['telegram'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
     btn_send['telegram'].grid(row=0, column=0, padx=5, pady=5)    
     lbl_msg_send['telegram'].grid(row=0, column=1, padx=5, pady=5)
+
+    frm_sent_msg_header['telegram'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
+    lbl_header_title['telegram'].grid(row=0, column=0, sticky='w', padx=5, pady=5)
+    btn_load_msg_from_db['telegram'].grid(row=0, column=1, sticky='w', padx=5, pady=5)
+    lbl_header_records_numbers['telegram'].grid(row=0, column=2, sticky='w', padx=5, pady=5)
+    btn_prev['telegram'].grid(row=0, column=3, sticky='w', padx=5, pady=5)
+    btn_next['telegram'].grid(row=0, column=4, sticky='w', padx=5, pady=5)
+
+    frm_sent_messages['telegram'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
 
     while True:
         root_send_msg.update()
@@ -345,7 +517,7 @@ ent['email']['to'] = tk.Entry(frm_msg_form['email'], width=72, highlightthicknes
 lbl['email']['subj'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
             text = 'Тема:', width=13, anchor='w', )
 ent['email']['subj'] = tk.Entry(frm_msg_form['email'], width=72, highlightthickness=1, highlightcolor = "Gainsboro", )
-ent['email']['text'] = tk.Text(frm_msg_form['email'], width=90, height=3, highlightthickness=1, highlightcolor = "Gainsboro", 
+ent['email']['msg_text'] = tk.Text(frm_msg_form['email'], width=90, height=3, highlightthickness=1, highlightcolor = "Gainsboro", 
                                 font=((TK_FONT, 9)))
 
 # === Фрейм №2 - кнопка отправки и информационные сообщения ===
@@ -363,14 +535,13 @@ frm_sent_msg_header, lbl_header_title, btn_load_msg_from_db, lbl_header_records_
 frm_sent_msg_header['email'] = tk.Frame(frm['email'], width=400, height=280, )
 lbl_header_title['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, text='База данных e-mail сообщений', 
                                         font=('Segoe UI', 10, 'bold'))
-btn_load_msg_from_db['email'] = tk.Button(frm_sent_msg_header['email'], text='Загрузить', width = 15, 
+btn_load_msg_from_db['email'] = tk.Button(frm_sent_msg_header['email'], text='Загрузить из БД', width = 15, 
                     command=lambda: loop_msg_service.create_task(btn_load_records_from_email_db_click()))
-lbl_header_records_numbers['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, text=f'10 из 100', 
-                                        font=('Segoe UI', 10))
+lbl_header_records_numbers['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, width = 15, font=('Segoe UI', 10))
 btn_prev['email'] = tk.Button(frm_sent_msg_header['email'], text='<', width = 15, 
-                    command=lambda: loop_msg_service.create_task(btn_slice_msg_click('email', 'prev')))
+                    command=lambda: loop_msg_service.create_task(btn_slice_email_msg_click(-1)))
 btn_next['email'] = tk.Button(frm_sent_msg_header['email'], text='>', width = 15, 
-                    command=lambda: loop_msg_service.create_task(btn_slice_msg_click('email', 'next')))
+                    command=lambda: loop_msg_service.create_task(btn_slice_email_msg_click(1)))
 
 # === Фрейм №4 - просмотр отправленных сообщений ===
 frm_sent_messages, lbl_sent_messages_header, lbl_message = {}, {}, {}
@@ -401,7 +572,7 @@ ent['telegram']['entity'] = tk.Entry(frm_msg_form['telegram'], width=72, highlig
 lbl['telegram']['to'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR,
             text = 'Кому:', width=13, anchor='w', )
 ent['telegram']['to'] = tk.Entry(frm_msg_form['telegram'], width=72, highlightthickness=1, highlightcolor = "Gainsboro", )
-ent['telegram']['text'] = tk.Text(frm_msg_form['telegram'], width=90, height=3, highlightthickness=1, highlightcolor = "Gainsboro", 
+ent['telegram']['msg_text'] = tk.Text(frm_msg_form['telegram'], width=90, height=3, highlightthickness=1, highlightcolor = "Gainsboro", 
                                 font=((TK_FONT, 9)))
 
 # === Фрейм №2 - кнопка отправки и информационные сообщения ===
@@ -411,6 +582,31 @@ btn_send['telegram'] = tk.Button(frm_sending['telegram'], text='Записать
         command=lambda: loop_msg_service.create_task(btn_telegram_insert_db_click()))
 lbl_msg_send['telegram'] = tk.Label(frm_sending['telegram'], text='', 
         bg=THEME_COLOR, width = 45, anchor='w', )
+
+# === Фрейм №3 - управление отправленными сообщениями ===
+frm_sent_msg_header['telegram'] = tk.Frame(frm['telegram'], width=400, height=280, )
+lbl_header_title['telegram'] = tk.Label(frm_sent_msg_header['telegram'], bg=THEME_COLOR, text='База данных telegram сообщений', 
+                                        font=('Segoe UI', 10, 'bold'))
+btn_load_msg_from_db['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='Загрузить из БД', width = 15, 
+                    command=lambda: loop_msg_service.create_task(btn_load_records_from_telegram_db_click()))
+lbl_header_records_numbers['telegram'] = tk.Label(frm_sent_msg_header['telegram'], bg=THEME_COLOR, width = 15, font=('Segoe UI', 10))
+btn_prev['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='<', width = 15, 
+                    command=lambda: loop_msg_service.create_task(btn_slice_telegram_msg_click(-1)))
+btn_next['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='>', width = 15, 
+                    command=lambda: loop_msg_service.create_task(btn_slice_telegram_msg_click(1)))
+
+# === Фрейм №4 - просмотр отправленных сообщений ===
+frm_sent_messages['telegram'] = tk.Frame(frm['telegram'], width=400, height=280, )
+lbl_message['telegram'], lbl_sent_messages_header['telegram'] = {}, {}
+for l in [('id', 5, 'id'), ('adrto', 20, 'Адреса'), ('msg_text', 61, 'Сообщение'), 
+    ('datep', 17, 'Дата записи'), ('dates', 17, 'Дата обработки')]:
+    lbl_sent_messages_header['telegram'][l[0]] = tk.Label(frm_sent_messages['telegram'],
+        font=('Segoe UI', 8), width=l[1], text=l[2])
+    lbl_message['telegram'][l[0]] = {}
+    for i in range(10):
+        lbl_message['telegram'][l[0]][i] = tk.Label(frm_sent_messages['telegram'], bg=THEME_COLOR, font=('Segoe UI', 8), width=l[1])
+        lbl_message['telegram'][l[0]][i]['anchor'] = 'w' if l[0] != 'id' else 'c'
+
 
 
 loop_msg_service = asyncio.get_event_loop()
