@@ -502,6 +502,13 @@ notebook = ttk.Notebook(root_send_msg)
 
 frm, frm_msg_form, frm_sending, lbl, ent = {}, {}, {}, {}, {}
 
+# Размеры виджетов
+ent_form_width = 107  # Фрейм №1  -  entry полей ввода данных
+ent_form_msg_width = 125  # Фрейм №1  -  text сообщения
+lbl_header_title_width = 28  # Фрейм №3  -  заголовок База данных ... сообщений
+btn_move_width = 12  #  Фрейм №3 -  кнопки перемещения по срезам сообщений
+frm_sent_messages_height = 230  #  Фрейм №4  -  высота фрейма таблицы сообщений
+
 # Вкладка email-сообщений =============================================================================
 frm['email'] = tk.Frame(notebook, bg=THEME_COLOR, width=400, )
 
@@ -513,12 +520,12 @@ lbl['email']['description'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR, te
 # Виджеты форм сообщения
 lbl['email']['to'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
             text = 'Адреса (через ;):', width=13, anchor='w', )
-ent['email']['to'] = tk.Entry(frm_msg_form['email'], width=72, highlightthickness=1, highlightcolor = "Gainsboro", )
+ent['email']['to'] = tk.Entry(frm_msg_form['email'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
 lbl['email']['subj'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
             text = 'Тема:', width=13, anchor='w', )
-ent['email']['subj'] = tk.Entry(frm_msg_form['email'], width=72, highlightthickness=1, highlightcolor = "Gainsboro", )
-ent['email']['msg_text'] = tk.Text(frm_msg_form['email'], width=90, height=3, highlightthickness=1, highlightcolor = "Gainsboro", 
-                                font=((TK_FONT, 9)))
+ent['email']['subj'] = tk.Entry(frm_msg_form['email'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
+ent['email']['msg_text'] = tk.Text(frm_msg_form['email'], width=ent_form_msg_width, height=3, 
+    highlightthickness=1, highlightcolor = "Gainsboro", font=((TK_FONT, 9)))
 
 # === Фрейм №2 - кнопка отправки и информационные сообщения ===
 frm_sending['email'] = tk.Frame(frm['email'], bg=THEME_COLOR, width=400, )
@@ -532,20 +539,20 @@ lbl_msg_send['email'] = tk.Label(frm_sending['email'], text='',
 # === Фрейм №3 - управление отправленными сообщениями ===
 frm_sent_msg_header, lbl_header_title, btn_load_msg_from_db, lbl_header_records_numbers, btn_prev, btn_next = {}, {}, {}, {}, {}, {}
 
-frm_sent_msg_header['email'] = tk.Frame(frm['email'], width=400, height=280, )
-lbl_header_title['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, text='База данных e-mail сообщений', 
-                                        font=('Segoe UI', 10, 'bold'))
+frm_sent_msg_header['email'] = tk.Frame(frm['email'], width=400, )  #height=280, 
+lbl_header_title['email'] = tk.Label(frm_sent_msg_header['email'], text='База данных e-mail сообщений', 
+    width=lbl_header_title_width, font=('Segoe UI', 10, 'bold'))
 btn_load_msg_from_db['email'] = tk.Button(frm_sent_msg_header['email'], text='Загрузить из БД', width = 15, 
                     command=lambda: loop_msg_service.create_task(btn_load_records_from_email_db_click()))
 lbl_header_records_numbers['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, width = 15, font=('Segoe UI', 10))
-btn_prev['email'] = tk.Button(frm_sent_msg_header['email'], text='<', width = 15, 
+btn_prev['email'] = tk.Button(frm_sent_msg_header['email'], text='<', width=btn_move_width, 
                     command=lambda: loop_msg_service.create_task(btn_slice_email_msg_click(-1)))
-btn_next['email'] = tk.Button(frm_sent_msg_header['email'], text='>', width = 15, 
+btn_next['email'] = tk.Button(frm_sent_msg_header['email'], text='>', width=btn_move_width, 
                     command=lambda: loop_msg_service.create_task(btn_slice_email_msg_click(1)))
 
 # === Фрейм №4 - просмотр отправленных сообщений ===
 frm_sent_messages, lbl_sent_messages_header, lbl_message = {}, {}, {}
-frm_sent_messages['email'] = tk.Frame(frm['email'], width=400, height=280, )
+frm_sent_messages['email'] = tk.Frame(frm['email'], width=400, height=frm_sent_messages_height, ) #,
 lbl_message['email'], lbl_sent_messages_header['email'] = {}, {}
 for l in [('id', 5, 'id'), ('adrto', 20, 'Адреса'), ('subj', 20, 'Тема'), ('textemail', 40, 'Сообщение'), 
     ('datep', 17, 'Дата записи'), ('dates', 17, 'Дата обработки')]:
@@ -568,12 +575,12 @@ lbl['telegram']['description'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COL
 # Виджеты форм сообщения
 lbl['telegram']['entity'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR,
             text = 'Тип получателя:', width=13, anchor='w', )
-ent['telegram']['entity'] = tk.Entry(frm_msg_form['telegram'], width=72, highlightthickness=1, highlightcolor = "Gainsboro", )
+ent['telegram']['entity'] = tk.Entry(frm_msg_form['telegram'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
 lbl['telegram']['to'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR,
             text = 'Кому:', width=13, anchor='w', )
-ent['telegram']['to'] = tk.Entry(frm_msg_form['telegram'], width=72, highlightthickness=1, highlightcolor = "Gainsboro", )
-ent['telegram']['msg_text'] = tk.Text(frm_msg_form['telegram'], width=90, height=3, highlightthickness=1, highlightcolor = "Gainsboro", 
-                                font=((TK_FONT, 9)))
+ent['telegram']['to'] = tk.Entry(frm_msg_form['telegram'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
+ent['telegram']['msg_text'] = tk.Text(frm_msg_form['telegram'], width=ent_form_msg_width, height=3, 
+    highlightthickness=1, highlightcolor = "Gainsboro", font=((TK_FONT, 9)))
 
 # === Фрейм №2 - кнопка отправки и информационные сообщения ===
 frm_sending['telegram'] = tk.Frame(frm['telegram'], bg=THEME_COLOR, width=400, )
@@ -584,19 +591,19 @@ lbl_msg_send['telegram'] = tk.Label(frm_sending['telegram'], text='',
         bg=THEME_COLOR, width = 45, anchor='w', )
 
 # === Фрейм №3 - управление отправленными сообщениями ===
-frm_sent_msg_header['telegram'] = tk.Frame(frm['telegram'], width=400, height=280, )
-lbl_header_title['telegram'] = tk.Label(frm_sent_msg_header['telegram'], bg=THEME_COLOR, text='База данных telegram сообщений', 
-                                        font=('Segoe UI', 10, 'bold'))
+frm_sent_msg_header['telegram'] = tk.Frame(frm['telegram'], width=400, )  #height=280, 
+lbl_header_title['telegram'] = tk.Label(frm_sent_msg_header['telegram'], text='База данных telegram сообщений', 
+    width=lbl_header_title_width, font=('Segoe UI', 10, 'bold'))
 btn_load_msg_from_db['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='Загрузить из БД', width = 15, 
                     command=lambda: loop_msg_service.create_task(btn_load_records_from_telegram_db_click()))
 lbl_header_records_numbers['telegram'] = tk.Label(frm_sent_msg_header['telegram'], bg=THEME_COLOR, width = 15, font=('Segoe UI', 10))
-btn_prev['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='<', width = 15, 
+btn_prev['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='<', width=btn_move_width, 
                     command=lambda: loop_msg_service.create_task(btn_slice_telegram_msg_click(-1)))
-btn_next['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='>', width = 15, 
+btn_next['telegram'] = tk.Button(frm_sent_msg_header['telegram'], text='>', width=btn_move_width, 
                     command=lambda: loop_msg_service.create_task(btn_slice_telegram_msg_click(1)))
 
 # === Фрейм №4 - просмотр отправленных сообщений ===
-frm_sent_messages['telegram'] = tk.Frame(frm['telegram'], width=400, height=280, )
+frm_sent_messages['telegram'] = tk.Frame(frm['telegram'], width=400, height=frm_sent_messages_height, )
 lbl_message['telegram'], lbl_sent_messages_header['telegram'] = {}, {}
 for l in [('id', 5, 'id'), ('adrto', 20, 'Адреса'), ('msg_text', 61, 'Сообщение'), 
     ('datep', 17, 'Дата записи'), ('dates', 17, 'Дата обработки')]:
