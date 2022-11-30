@@ -61,6 +61,8 @@ if os.path.exists(error_email_list_path):
         for l in f.readlines():
             ERROR_EMAIL_LIST.append(l.split('\t')[-1].strip())
 
+RECORDS_EMAIL, RECORDS_TELEGRAM = [], []  # записи из базы данных сообщений
+
 ROBOT_START = False
 ROBOT_STOP = False
 APP_EXIT = False
@@ -112,6 +114,7 @@ async def btn_email_insert_db_click():
     # Проверка корректности e-mail адресов
     addrs = adrto.split(';')
     for a in addrs:
+        a = a.strip()
         if not (re.fullmatch(REGEX_EMAIL_VALID, a)):
             lbl_msg_send['email']['text'] = f'Некорректный e-mail адрес {a}.'
             return 1
@@ -126,7 +129,6 @@ async def btn_email_insert_db_click():
     lbl_msg_send['email']['text'] = f'Запись в базу данных .....'
     await asyncio.sleep(0.5)
 
-    
     datep = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, datep) values
                 ('{subj}', '{textemail}', '{adrto}', '{datep}') """
@@ -136,6 +138,8 @@ async def btn_email_insert_db_click():
         lbl_msg_send['email']['text'] = f'Записано в базу данных.'
     except:
         lbl_msg_send['email']['text'] = f"Ошибка записи в базу данных {EMAIL_DB} -  ошибка."
+        await cursor.close()
+        await cnxn.close()
         return 1
 
     await cursor.close()
@@ -170,10 +174,49 @@ async def btn_telegram_insert_db_click():
         lbl_msg_send['telegram']['text'] = f'Записано в базу данных.'
     except:
         lbl_msg_send['telegram']['text'] = f"Ошибка записи в базу данных {TELEGRAM_DB} -  ошибка."
+        await cursor.close()
+        await cnxn.close()
         return 1
 
     await cursor.close()
     await cnxn.close()
+
+
+async def btn_load_records_from_email_db_click():
+    # выборка записей из базы данных EMAIL_DB
+    global RECORDS_EMAIL
+    try:
+        cnxn = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_msg_service)
+        cursor = await cnxn.cursor()
+    except:
+        print(f"Подключение к базе данных {EMAIL_DB} -  ошибка.")
+        await cursor.close()
+        await cnxn.close()
+        return 1
+    try:
+        await cursor.execute(f"""select UniqueIndexField, adrto, subj, textemail, datep, dates 
+            from {EMAIL_DB_TABLE_EMAILS} order by datep desc""")
+        RECORDS_EMAIL = await cursor.fetchall()  # список кортежей
+        await cursor.close()
+        await cnxn.close()
+    except Exception as e:
+        print(f'Ошибка чтения из базы данных EMAIL_DB {EMAIL_DB}.', e)
+        await cursor.close()
+        await cnxn.close()
+        return 1
+
+    c = 0
+    for l in ['id', 'adrto', 'subj', 'textemail', 'datep', 'dates']:
+        lbl_sent_messages_header['email'][l].grid(row=0, column=c, sticky='w', padx=1, pady=1)
+        c += 1
+
+    cnt_rows = len(RECORDS_EMAIL) if len(RECORDS_EMAIL) < 10 else 10
+    for i in range(cnt_rows):
+        c = 0
+        for l in ['id', 'adrto', 'subj', 'textemail', 'datep', 'dates']:
+            lbl_message['email'][l][i]['text'] = RECORDS_EMAIL[i][c]
+            lbl_message['email'][l][i].grid(row=i+1, column=c, sticky='w', padx=1, pady=1)
+            c += 1
 
 
 async def btn_slice_msg_click(msg_type, move_type):
@@ -216,12 +259,15 @@ async def show_send_msg():
     btn_send['email'].grid(row=0, column=0, padx=5, pady=5)    
     lbl_msg_send['email'].grid(row=0, column=1, padx=5, pady=5)
 
-    #frm_sent_msg_header
-    #frm_sent_messages
+    frm_sent_msg_header['email'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
+    lbl_header_title['email'].grid(row=0, column=0, sticky='w', padx=5, pady=5)
+    btn_load_msg_from_db['email'].grid(row=0, column=1, sticky='w', padx=5, pady=5)
+    lbl_header_records_numbers['email'].grid(row=0, column=2, sticky='w', padx=5, pady=5)
+    btn_prev['email'].grid(row=0, column=3, sticky='w', padx=5, pady=5)
+    btn_next['email'].grid(row=0, column=4, sticky='w', padx=5, pady=5)
 
-    # frm_footer.pack(padx=10, pady=(0, 10), fill='both', expand=True)  
-    # btn_save_config.grid(row = 0, column = 0)
-    # lbl_config_msg.grid(row = 0, column = 1, padx = 10)
+    frm_sent_messages['email'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
+
 
     # Вкладка telegram-сообщений ============================
     notebook.add(frm['telegram'], text='Telegram')
@@ -311,26 +357,34 @@ btn_send['email'] = tk.Button(frm_sending['email'], text='Записать в Б
 lbl_msg_send['email'] = tk.Label(frm_sending['email'], text='', 
         bg=THEME_COLOR, width = 45, anchor='w', )
 
-
-# === Фрейм №3 - шапка отправленных сообщений ===
-frm_sent_msg_header, lbl_header_title, btn_prev, btn_next = {}, {}, {}, {}
+# === Фрейм №3 - управление отправленными сообщениями ===
+frm_sent_msg_header, lbl_header_title, btn_load_msg_from_db, lbl_header_records_numbers, btn_prev, btn_next = {}, {}, {}, {}, {}, {}
 
 frm_sent_msg_header['email'] = tk.Frame(frm['email'], width=400, height=280, )
 lbl_header_title['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, text='База данных e-mail сообщений', 
                                         font=('Segoe UI', 10, 'bold'))
+btn_load_msg_from_db['email'] = tk.Button(frm_sent_msg_header['email'], text='Загрузить', width = 15, 
+                    command=lambda: loop_msg_service.create_task(btn_load_records_from_email_db_click()))
+lbl_header_records_numbers['email'] = tk.Label(frm_sent_msg_header['email'], bg=THEME_COLOR, text=f'10 из 100', 
+                                        font=('Segoe UI', 10))
 btn_prev['email'] = tk.Button(frm_sent_msg_header['email'], text='<', width = 15, 
                     command=lambda: loop_msg_service.create_task(btn_slice_msg_click('email', 'prev')))
-btn_next['email'] = tk.Button(frm_sent_msg_header['email'], text='<', width = 15, 
+btn_next['email'] = tk.Button(frm_sent_msg_header['email'], text='>', width = 15, 
                     command=lambda: loop_msg_service.create_task(btn_slice_msg_click('email', 'next')))
 
 # === Фрейм №4 - просмотр отправленных сообщений ===
-frm_sent_messages, lbl_message = {}, {}
-
+frm_sent_messages, lbl_sent_messages_header, lbl_message = {}, {}, {}
 frm_sent_messages['email'] = tk.Frame(frm['email'], width=400, height=280, )
-lbl_message['email'] = tk.Label(frm_sent_messages['email'], bg=THEME_COLOR, text='Message 1', 
-                                        font=('Segoe UI', 10))
-
-
+lbl_message['email'], lbl_sent_messages_header['email'] = {}, {}
+for l in [('id', 5, 'id'), ('adrto', 20, 'Адреса'), ('subj', 20, 'Тема'), ('textemail', 40, 'Сообщение'), 
+    ('datep', 17, 'Дата записи'), ('dates', 17, 'Дата обработки')]:
+    lbl_sent_messages_header['email'][l[0]] = tk.Label(frm_sent_messages['email'],
+        font=('Segoe UI', 8), width=l[1], text=l[2])
+    lbl_message['email'][l[0]] = {}
+    for i in range(10):
+        lbl_message['email'][l[0]][i] = tk.Label(frm_sent_messages['email'], bg=THEME_COLOR, font=('Segoe UI', 8), width=l[1])
+        lbl_message['email'][l[0]][i]['anchor'] = 'w' if l[0] != 'id' else 'c'
+            
 
 # Вкладка telegram-сообщений =============================================================================
 frm['telegram'] = tk.Frame(notebook, bg=THEME_COLOR, width=400, )
