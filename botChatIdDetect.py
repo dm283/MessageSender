@@ -12,20 +12,20 @@ with open('rec-k.txt') as f:
     rkey = f.read().encode('utf-8')
 refKey = Fernet(rkey)
 
-hashed_common_bot_token = config['common']['bot_token'].split('\t#')[0]
+hashed_common_bot_token = config['telegram_bot']['bot_token'].split('\t#')[0]
 common_bot_token = (refKey.decrypt(hashed_common_bot_token).decode('utf-8'))
 
-BOT_NAME = config['common']['bot_name'].split('\t#')[0]
+BOT_NAME = config['telegram_bot']['bot_name'].split('\t#')[0]
 BOT_TOKEN = common_bot_token
-DB = config['database']['db'].split('\t#')[0]  # база данных mssql/posgres
-DB_TABLE_TELEGRAM_CHATS = config['database']['db_table_telegram_chats'].split('\t#')[0]  # db.schema.table  таблица с telegram-чатами
-CONNECTION_STRING = config['database']['connection_string'].split('\t#')[0]  # odbc driver system dsn name
+TELEGRAM_DB = config['telegram_bot']['db'].split('\t#')[0]  # база данных mssql/posgres
 
+TELEGRAM_DB_TABLE_CHATS = config['telegram_bot']['db_table_chats'].split('\t#')[0]  # db.schema.table  таблица с telegram-чатами
+TELEGRAM_DB_CONNECTION_STRING = config['telegram_bot']['db_connection_string'].split('\t#')[0]  # odbc driver system dsn name
 
 async def detect_telegram_chat_id():
 # определяет для бота и telegram-сущности id их чата, после его создания
     try:
-        cnxn = await aioodbc.connect(dsn=CONNECTION_STRING, loop=loop)
+        cnxn = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop)
         cursor = await cnxn.cursor()
     except:
         print("Подключение к базе данных  -  ошибка")
@@ -101,7 +101,7 @@ async def save_telegram_chat_id_to_db(BOT_NAME, TELEGRAM_ENTITY_TYPE, TELEGRAM_E
     # сохраняет id и контакт telegram-чата в базу данных
     try:
         tet_for_insert = 'administrator' if tet == '-ua' else TELEGRAM_ENTITY_TYPE
-        query = f"""insert into {DB_TABLE_TELEGRAM_CHATS} (chat_id, entity_name, entity_type, bot_name) values (
+        query = f"""insert into {TELEGRAM_DB_TABLE_CHATS} (chat_id, entity_name, entity_type, bot_name) values (
             {chat_id}, '{TELEGRAM_ENTITY_NAME}', '{tet_for_insert}', '{BOT_NAME}')"""
         await cursor.execute(query)
         await cnxn.commit()
@@ -115,8 +115,9 @@ async def save_telegram_chat_id_to_db(BOT_NAME, TELEGRAM_ENTITY_TYPE, TELEGRAM_E
 async def check_telegram_entity_in_db(cnxn, cursor):
     # проверка наличия telegram-сущности в базе данных
     try:
-        query = f"""select id from {DB_TABLE_TELEGRAM_CHATS} where entity_name='{TELEGRAM_ENTITY_NAME}' 
-                and entity_type='{TELEGRAM_ENTITY_TYPE}' and bot_name='{BOT_NAME}' and is_active"""
+        entity_types = "'user', 'administrator'" if tet in ('-u', '-ua') else "'group'"
+        query = f"""select id from {TELEGRAM_DB_TABLE_CHATS} where entity_name='{TELEGRAM_ENTITY_NAME}' 
+                and entity_type in ({entity_types}) and bot_name='{BOT_NAME}' and is_active"""
         await cursor.execute(query)
         rows = await cursor.fetchall()
     except:
@@ -132,15 +133,21 @@ async def check_telegram_entity_in_db(cnxn, cursor):
 # приложение запускается с параметрами: тип (-u / -g) и имя сущности
 if len(sys.argv) < 3:
     print("Формат запуска:  botChatIdDetect -entity_type entity_name")
+    print("-entity_type: -u/-ua/-g")
     sys.exit()
 
 tet = sys.argv[1]
 if tet in ('-u', '-ua'): 
-        TELEGRAM_ENTITY_NAME = sys.argv[2]
-        TELEGRAM_ENTITY_TYPE = 'user'
+    TELEGRAM_ENTITY_NAME = sys.argv[2]
+    TELEGRAM_ENTITY_TYPE = 'user'
 elif tet =='-g': 
-        TELEGRAM_ENTITY_NAME = sys.argv[2]
-        TELEGRAM_ENTITY_TYPE = 'group'
+    TELEGRAM_ENTITY_NAME = sys.argv[2]
+    TELEGRAM_ENTITY_TYPE = 'group'
+else:
+    print(f"Ошибка: некорректный ключ {tet}")
+    print("Формат запуска:  botChatIdDetect -entity_type entity_name")
+    print("-entity_type: -u/-ua/-g")
+    sys.exit()
 
 print(TELEGRAM_ENTITY_TYPE, TELEGRAM_ENTITY_NAME)
 
