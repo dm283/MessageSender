@@ -6,4 +6,6 @@
 venv/
 рабочие/
 build/
+attachments_email/
+attachments_telegram/
 setup.py
