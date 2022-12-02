@@ -3,6 +3,11 @@ import requests, aioodbc
 from aiosmtplib import SMTP
 from aioimaplib import aioimaplib
 from cryptography.fernet import Fernet
+from pathlib import Path
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 
 # загрузка конфигурации
 CONFIG_FILE = 'config.ini'
@@ -23,6 +28,10 @@ hashed_email_server_password = config['email']['server_password'].split('\t#')[0
 email_server_password = (refKey.decrypt(hashed_email_server_password).decode('utf-8'))
 
 CHECK_DB_PERIOD = int(config['common']['check_db_period'].split('\t#')[0])  # период проверки новых записей в базе данных
+DIR_EMAIL_ATTACHMENTS = Path(config['common']['dir_email_attachments'])  # директория с файлами для отправки
+DIR_TELEGRAM_ATTACHMENTS = Path(config['common']['dir_telegram_attachments'])
+#Path('c:/Users/dm283/Documents/Tech/ALTA/MessageSender/attachments')
+#Path().absolute() / 'attachments'
 
 USER_NAME = config['user_credentials']['name'].split('\t#')[0]
 USER_PASSWORD = user_credentials_password
@@ -194,14 +203,40 @@ async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_re
     smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
     await smtp_client.connect() 
     for e in email_msg_data_records:
-        # e =  (1, 'test1', 'This is the test message 1!', 'testbox283@yandex.ru; testbox283@mail.ru')
+        # e =  (1, 'test1', 'This is the test message 1!', 'testbox283@yandex.ru; testbox283@mail.ru', 'at1.txt; at2.jpg')
         print("Новая запись в EMAIL_DB ", e)  ### test
-        addrs = e[3].split(';')
+        addrs = e[3].strip().split(';')
         for a in addrs:
             a = a.strip()
             if(re.fullmatch(REGEX_EMAIL_VALID, a)):
                 if a not in ERROR_EMAIL_LIST:
-                    msg = f'To: {a}\nFrom: {SENDER_EMAIL}\nSubject: {e[1]}\n\n{e[2]}'.encode("utf-8")
+                    if not e[4]:   #  если нет приложенных файлов формируется простое сообщение
+                        msg = f'To: {a}\nFrom: {SENDER_EMAIL}\nSubject: {e[1]}\n\n{e[2]}'.encode("utf-8")
+                    else:   # если есть приложенные файлы формируется составное сообщение
+                        message = MIMEMultipart()
+                        message['From'] = SENDER_EMAIL
+                        message['To'] = a
+                        message['Subject'] = e[1]
+                        message_text = e[2]
+                        message.attach(MIMEText(message_text, 'plain'))
+                        files = e[4].strip().split(';')
+                        for f in files:  # add files to the message
+                            f = f.strip()
+                            file_path = DIR_EMAIL_ATTACHMENTS / f
+                            if not file_path.exists():
+                                print(f'файл {f} не существует!')
+                                continue
+
+                            with open(file_path, 'rb') as fp:
+                                # attach_file = open(file_path, 'rb')
+                                attach_file = fp
+                                payload = MIMEBase('application', 'octate-stream')
+                                payload.set_payload((attach_file).read())
+                                encoders.encode_base64(payload)
+                                payload.add_header('Content-Disposition', 'attachment', filename=f)
+                                message.attach(payload)
+
+                        msg = message.as_string()
                     await smtp_client.sendmail(SENDER_EMAIL, a, msg)
                     log_rec = f'send message to {a} [ id = {e[0]} ]'
                 else:
@@ -257,11 +292,12 @@ async def check_undelivered_emails(host, user, password):
 async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data_records, telegram_chats):
     # отправляет сообщения через telegram
     for record in msg_data_records:
-        # структура данных record =  (1, 'This is the test message 1!', 'test-group-1')
+        # структура данных record =  (1, 'This is the test message 1!', 'test-group-1; test-group-2', 'file1.txt; file2.txt')
         print("Новая запись в TELEGRAM_DB ", record)  ###
         record_id = record[0]
         record_msg = record[1]
-        record_addresses = record[2].split(';')
+        record_addresses = record[2].strip().split(';')
+        record_attachments = record[3].strip().split(';') if record[3] else None
 
         for address in record_addresses:
             address = address.strip()
@@ -280,10 +316,32 @@ async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage?chat_id={chat_id}&text={record_msg}"
             try:
                 requests.get(url).json()
-                # print(requests.get(url).json())  ###
                 print(f'Сообщение {address} отправлено.\n')
             except Exception as e:
                 print('Ошибка отправки:\n', e)
+
+            # обработка поля attachments - отправка файлов
+            if not record_attachments:   #  если нет приложенных файлов формируется простое сообщение
+                continue
+            # если есть приложенные файлы
+            for document in record_attachments:
+                document = document.strip()
+                file_path = DIR_TELEGRAM_ATTACHMENTS / document
+                
+                if not file_path.exists():
+                    print(f'файл {document} не существует!')
+                    continue
+
+                with open(file_path, "rb") as f:
+                    files = {"document": f}
+                    try:
+                        r = requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument", data={"chat_id":chat_id}, files=files)
+                        if r.status_code != 200:
+                            raise Exception()
+                        print(f'Файл {document} отправлен {address}.\n')
+                    except Exception as e:
+                        print('Ошибка отправки:\n', e)    
+                    
 
         await set_record_handling_time_in_telegram_db(cnxn_telegram_db, cursor_telegram_db, record_id)
         print('Запись из TELEGRAM_DB обработана.')  ####
@@ -307,7 +365,7 @@ async def load_telegram_chats_from_db(cursor_telegram_db):
 async def load_records_from_email_db(cursor_email_db):
     # выборка из базы данных EMAIL_DB необработанных (новых) записей
     try:
-        await cursor_email_db.execute(f"""select UniqueIndexField, subj, textemail, adrto from {EMAIL_DB_TABLE_EMAILS} 
+        await cursor_email_db.execute(f"""select UniqueIndexField, subj, textemail, adrto, attachmentfiles from {EMAIL_DB_TABLE_EMAILS} 
                 where dates is null order by datep""")
         rows = await cursor_email_db.fetchall()  # список кортежей
     except Exception as e:
@@ -318,12 +376,13 @@ async def load_records_from_email_db(cursor_email_db):
 async def load_records_from_telegram_db(cursor_telegram_db):
     # выборка из базы данных TELEGRAM_DB необработанных (новых) записей
     try:
-        await cursor_telegram_db.execute(f"""select UniqueIndexField, msg_text, adrto from {TELEGRAM_DB_TABLE_MESSAGES} 
+        await cursor_telegram_db.execute(f"""select UniqueIndexField, msg_text, adrto, attachmentfiles from {TELEGRAM_DB_TABLE_MESSAGES} 
             where dates is null order by datep""")
         rows = await cursor_telegram_db.fetchall()  # список кортежей
     except Exception as e:
         print(f'Ошибка чтения из базы данных TELEGRAM_DB {TELEGRAM_DB}.', e)
         return 1
+    print('rows = ', rows) ###
     return rows
 
 
@@ -456,7 +515,7 @@ async def show():
         root.update()
         await asyncio.sleep(.1)
 
-development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:
