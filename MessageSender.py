@@ -28,8 +28,8 @@ hashed_email_server_password = config['email']['server_password'].split('\t#')[0
 email_server_password = (refKey.decrypt(hashed_email_server_password).decode('utf-8'))
 
 CHECK_DB_PERIOD = int(config['common']['check_db_period'].split('\t#')[0])  # период проверки новых записей в базе данных
-DIR_EMAIL_ATTACHMENTS = Path(config['common']['dir_email_attachments'])  # директория с файлами для отправки
-DIR_TELEGRAM_ATTACHMENTS = Path(config['common']['dir_telegram_attachments'])
+DIR_EMAIL_ATTACHMENTS = Path(config['common']['dir_email_attachments'].split('\t#')[0])  # директория с файлами для отправки
+DIR_TELEGRAM_ATTACHMENTS = Path(config['common']['dir_telegram_attachments'].split('\t#')[0])
 #Path('c:/Users/dm283/Documents/Tech/ALTA/MessageSender/attachments')
 #Path().absolute() / 'attachments'
 
@@ -321,7 +321,7 @@ async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data
                 print('Ошибка отправки:\n', e)
 
             # обработка поля attachments - отправка файлов
-            if not record_attachments:   #  если нет приложенных файлов формируется простое сообщение
+            if not record_attachments:   #  если нет приложенных файлов
                 continue
             # если есть приложенные файлы
             for document in record_attachments:
