@@ -1,7 +1,8 @@
 import sys, os, configparser, re, datetime, asyncio, tkinter as tk
 import aioodbc
 from cryptography.fernet import Fernet
-from tkinter import ttk
+from pathlib import Path
+from tkinter import ttk, filedialog
 
 # загрузка конфигурации
 CONFIG_FILE = 'config.ini'
@@ -22,6 +23,8 @@ hashed_email_server_password = config['email']['server_password'].split('\t#')[0
 email_server_password = (refKey.decrypt(hashed_email_server_password).decode('utf-8'))
 
 CHECK_DB_PERIOD = int(config['common']['check_db_period'].split('\t#')[0])  # период проверки новых записей в базе данных
+DIR_EMAIL_ATTACHMENTS = Path(config['common']['dir_email_attachments'].split('\t#')[0])  # директория с файлами для отправки
+DIR_TELEGRAM_ATTACHMENTS = Path(config['common']['dir_telegram_attachments'].split('\t#')[0])
 
 USER_NAME = config['user_credentials']['name'].split('\t#')[0]
 USER_PASSWORD = user_credentials_password
@@ -69,10 +72,12 @@ SIGN_IN_FLAG = False
 THEME_COLOR = 'Gainsboro'
 TK_FONT = 'Segoe UI'
 LBL_COLOR = THEME_COLOR
+
+BTN_INSERT_COLOR = 'SeaGreen'
+
 LBL_ROBOT_MSG_COLOR = 'LightGray'
 ENT_COLOR = 'White'
 BTN_SIGN_IN_COLOR = 'Green'
-BTN_START_COLOR = 'SeaGreen'
 BTN_STOP_COLOR = 'SlateGray'
 BTN_EXIT_COLOR = 'OrangeRed'
 BTN_TEXT_COLOR = 'White'
@@ -105,6 +110,7 @@ async def btn_email_insert_db_click():
     adrto = ent['email']['to'].get().strip()
     subj = ent['email']['subj'].get().strip()
     textemail = ent['email']['msg_text'].get(1.0, "end-1c").strip()
+    attachments = ent['email']['attachments'].get(1.0, "end-1c").strip()
     
     if adrto == '' or subj == '' or textemail == '':
         lbl_msg_send['email']['text'] = 'Заполните все поля e-mail сообщения.'
@@ -129,8 +135,8 @@ async def btn_email_insert_db_click():
     await asyncio.sleep(0.5)
 
     datep = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, datep) values
-                ('{subj}', '{textemail}', '{adrto}', '{datep}') """
+    query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, attachmentfiles, datep) values
+                ('{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
     try:
         await cursor.execute(query)
         await cnxn.commit()
@@ -425,7 +431,6 @@ async def load_from_telegram_db(event):
     entity_type = cmbx['telegram']['entity'].get()
 
     entity_types = "'user', 'administrator'" if entity_type == 'Telegram-пользователь' else "'group'"
-    #entity_type = 'group' if entity_type == 'Telegram-группа' else 'user'
     try:
         query = f"""select distinct entity_name from {TELEGRAM_DB_TABLE_CHATS} 
             where entity_type in ({entity_types}) and bot_name='{BOT_NAME}' and is_active"""
@@ -439,6 +444,16 @@ async def load_from_telegram_db(event):
         await cursor.close()
         await cnxn.close()
         return 1
+
+
+async def btn_attached_files_path_click():
+    # добавляет к записи прикрепленные файлы
+    filepath = filedialog.askopenfilenames(initialdir=DIR_EMAIL_ATTACHMENTS)
+    print(filepath)
+    if filepath != "":
+        filepath = list(map(lambda x: x.split('/')[-1], list(filepath)))
+        postfix = '; ' if ent['email']['attachments'].get(1.0, "end-1c").strip() else ''
+        ent['email']['attachments'].insert("1.0", '; '.join(filepath) + postfix)
 
 
 async def show_send_msg():
@@ -456,9 +471,13 @@ async def show_send_msg():
     ent['email']['subj'].grid(row=2, column=1, sticky='w', padx=5, pady=5)
     ent['email']['msg_text'].grid(row=3, columnspan=2, sticky='w', padx=5, pady=5)
 
+    lbl['email']['attachments'].grid(row=4, column=0, sticky='w', padx=5, pady=5)
+    ent['email']['attachments'].grid(row=4, column=1, sticky='w', padx=5, pady=5)
+
     frm_sending['email'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
-    btn_send['email'].grid(row=0, column=0, padx=5, pady=5)    
-    lbl_msg_send['email'].grid(row=0, column=1, padx=5, pady=5)
+    btn_send['email'].grid(row=0, column=0, padx=5, pady=5)
+    btn_attached_files_path['email'].grid(row=0, column=1, padx=5, pady=5)
+    lbl_msg_send['email'].grid(row=0, column=2, padx=5, pady=5)
 
     frm_sent_msg_header['email'].pack(padx=5, pady=(1, 5), fill='both', expand=True)
     lbl_header_title['email'].grid(row=0, column=0, sticky='w', padx=5, pady=5)
@@ -496,7 +515,7 @@ async def show_send_msg():
 
     while True:
         root_send_msg.update()
-        await asyncio.sleep(.1)
+        await asyncio.sleep(.01)
 
 # ============== window sign in
 root = tk.Tk()
@@ -518,7 +537,7 @@ btn_sign = tk.Button(master=frm, bg=BTN_SIGN_IN_COLOR, fg='White', text='Sign in
 lbl_msg_sign = tk.Label(master=frm, bg=LBL_COLOR, fg='PaleVioletRed', font=(TK_FONT, 12), width=25, height=2)
 
 
-development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:
@@ -544,6 +563,8 @@ frm, frm_msg_form, frm_sending, lbl, ent = {}, {}, {}, {}, {}
 lbl_form_width = 13  # Фрейм №1  -  labels наименований полей ввода данных
 ent_form_width = 107  # Фрейм №1  -  entry полей ввода данных
 ent_form_msg_width = 125  # Фрейм №1  -  text сообщения
+ent_form_msg_height = 6  # Фрейм №1  -  text сообщения
+lbl_msg_send_width = 70  # Фрейм №2  -  label сервисных сообщений
 lbl_header_title_width = 28  # Фрейм №3  -  заголовок База данных ... сообщений
 btn_move_width = 12  #  Фрейм №3 -  кнопки перемещения по срезам сообщений
 frm_sent_messages_height = 230  #  Фрейм №4  -  фрейм таблицы сообщений
@@ -564,17 +585,26 @@ ent['email']['to'] = tk.Entry(frm_msg_form['email'], width=ent_form_width, highl
 lbl['email']['subj'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
             text = 'Тема:', width=lbl_form_width, anchor='w', )
 ent['email']['subj'] = tk.Entry(frm_msg_form['email'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
-ent['email']['msg_text'] = tk.Text(frm_msg_form['email'], width=ent_form_msg_width, height=3, 
+ent['email']['msg_text'] = tk.Text(frm_msg_form['email'], width=ent_form_msg_width, height=ent_form_msg_height, 
     highlightthickness=1, highlightcolor = "Gainsboro", font=((TK_FONT, 9)))
 
-# === Фрейм №2 - кнопка отправки и информационные сообщения ===
+lbl['email']['attachments'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
+            text = 'Файлы:', width=lbl_form_width, anchor='w', )
+ent['email']['attachments'] = tk.Text(frm_msg_form['email'], width=ent_form_width, height=1, 
+    highlightthickness=1, highlightcolor = "Gainsboro", font=((TK_FONT, 9)))
+
+# === Фрейм №2 - кнопка отправки, кнопка добавления файлов и информационные сообщения ===
 frm_sending['email'] = tk.Frame(frm['email'], bg=THEME_COLOR, width=400, )
 
-btn_send, lbl_msg_send = {}, {}
-btn_send['email'] = tk.Button(frm_sending['email'], text='Записать в БД', width = 15, 
+btn_send, btn_attached_files_path, lbl_msg_send = {}, {}, {}
+btn_send['email'] = tk.Button(frm_sending['email'], text='Записать в БД', bg=BTN_INSERT_COLOR, width = 15, 
         command=lambda: loop_msg_service.create_task(btn_email_insert_db_click()))
+
+btn_attached_files_path['email'] = tk.Button(frm_sending['email'], text='Прикрепить файлы', width = 16, 
+        command=lambda: loop_msg_service.create_task(btn_attached_files_path_click()))
+
 lbl_msg_send['email'] = tk.Label(frm_sending['email'], text='', 
-        bg=THEME_COLOR, width = 45, anchor='w', )
+        bg='orange', width=lbl_msg_send_width, anchor='w', )  # THEME_COLOR
 
 # === Фрейм №3 - управление отправленными сообщениями ===
 frm_sent_msg_header, lbl_header_title, btn_load_msg_from_db, lbl_header_records_numbers, btn_prev, btn_next = {}, {}, {}, {}, {}, {}
@@ -632,7 +662,7 @@ cmbx['telegram']['to']['state'] = 'readonly'
 
 lbl['telegram']['to'] = tk.Label(frm_msg_form['telegram'], bg=THEME_COLOR,
             text = 'Кому:', width=lbl_form_width, anchor='w', )
-ent['telegram']['msg_text'] = tk.Text(frm_msg_form['telegram'], width=ent_form_msg_width, height=3, 
+ent['telegram']['msg_text'] = tk.Text(frm_msg_form['telegram'], width=ent_form_msg_width, height=ent_form_msg_height, 
     highlightthickness=1, highlightcolor = "Gainsboro", font=((TK_FONT, 9)))
 
 # === Фрейм №2 - кнопка отправки и информационные сообщения ===
@@ -641,7 +671,7 @@ frm_sending['telegram'] = tk.Frame(frm['telegram'], bg=THEME_COLOR, width=400, )
 btn_send['telegram'] = tk.Button(frm_sending['telegram'], text='Записать в БД', width = 15, 
         command=lambda: loop_msg_service.create_task(btn_telegram_insert_db_click()))
 lbl_msg_send['telegram'] = tk.Label(frm_sending['telegram'], text='', 
-        bg=THEME_COLOR, width = 45, anchor='w', )
+        bg=THEME_COLOR, width=lbl_msg_send_width, anchor='w', )
 
 # === Фрейм №3 - управление отправленными сообщениями ===
 frm_sent_msg_header['telegram'] = tk.Frame(frm['telegram'], width=400, ) 
