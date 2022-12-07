@@ -121,6 +121,7 @@ async def btn_telegram_insert_db_click():
     # Кнопка записи в бд telegram-сообщения
     msg_text = ent['telegram']['msg_text'].get(1.0, "end-1c").strip()
     adrto = cmbx['telegram']['to'].get().strip()
+    attachments = ent['telegram']['attachments'].get(1.0, "end-1c").strip()
 
     if adrto == '' or msg_text == '':
         lbl_msg_send['telegram']['text'] = 'Заполните все поля telegram сообщения'
@@ -137,8 +138,8 @@ async def btn_telegram_insert_db_click():
     await asyncio.sleep(0.5)
 
     datep = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    query = f""" insert into {TELEGRAM_DB_TABLE_MESSAGES} (msg_text, adrto, datep) values
-                ('{msg_text}', '{adrto}', '{datep}') """
+    query = f""" insert into {TELEGRAM_DB_TABLE_MESSAGES} (msg_text, adrto, attachmentfiles, datep) values
+                ('{msg_text}', '{adrto}', '{attachments}', '{datep}') """
     try:
         await cursor.execute(query)
         await cnxn.commit()
