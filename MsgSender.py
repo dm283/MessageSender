@@ -88,6 +88,48 @@ BTN_FONT = (TK_FONT, 12, 'bold')
 RUNNER_COLOR = 'DodgerBlue'
 
 
+# ПРОВЕРКА АРГУМЕНТОВ CMD ПРИ ЗАПУСКЕ ПРИЛОЖЕНИЯ - ДЛЯ ВЫБОРА РЕЖИМА РАБОТЫ (APPMODE_CONSOLE/APPMODE_INTERFACE)
+# APPMODE_INTERFACE - none argv
+# APPMODE_CONSOLE - MsgSender -console -username -userpassword -email/telegram/all-channels -cntrecs/all
+APPMODE_INTERFACE, APPMODE_CONSOLE, IS_ALL_RECS = bool(), bool(), bool()
+if len(sys.argv) == 1:
+    APPMODE_INTERFACE = True
+elif len(sys.argv) >= 5 and len(sys.argv) <= 6 and sys.argv[1] == '-console':
+    APPMODE_CONSOLE = True
+    user, password = sys.argv[2][1:], sys.argv[3][1:]
+    if user != USER_NAME or password != USER_PASSWORD:
+        print('Ошибка:  некорректные имя пользователя/пароль.')
+        sys.exit()
+    if sys.argv[4][1:] not in ('email', 'telegram', 'all-channels'):
+        print('Ошибка:  в аргументах указан некорректный канал сообщений [email/telegram/all-channels].')
+        print('Формат запуска:  MsgSender -console -username -userpassword -email/telegram/all-channels -cntrecs/all')
+        sys.exit()
+    MODE_EMAIL = True if sys.argv[4][1:] in ('email', 'all-channels') else False
+    MODE_TELEGRAM = True if sys.argv[4][1:] in ('telegram', 'all-channels') else False
+    if len(sys.argv) == 6:
+        if sys.argv[5][1:].isdigit():
+            IS_ALL_RECS = False
+            CNT_RECS = int(sys.argv[5][1:])
+            print('CNT_RECS', CNT_RECS)
+        elif sys.argv[5][1:] == 'all':
+            IS_ALL_RECS = True
+        else:
+            print('Ошибка аргумента количества записей  -  должен быть целым числом или all.')
+            sys.exit()
+    elif len(sys.argv) == 5:
+        scheduler_handling_db_recs = config['common']['scheduler_handling_db_recs'].split('\t#')[0]
+        if scheduler_handling_db_recs.isdigit():
+            IS_ALL_RECS = False                         # флаг чтения всех записей из бд
+            CNT_RECS = int(scheduler_handling_db_recs)  # кол-во записей читаемых из бд
+            print('CNT_RECS', CNT_RECS)
+        elif scheduler_handling_db_recs == 'all':
+            IS_ALL_RECS = True
+else:
+    print('Ошибка запуска приложения.')
+    print('Формат запуска:  MsgSender -console -username -userpassword -email/telegram/all-channels -cntrecs/all')
+    sys.exit()
+
+
 # === MESSENGER FUNCTIONS ===
 async def robot():
     # запускает робота
@@ -96,8 +138,8 @@ async def robot():
         return
     ROBOT_START = True  # флаг старта робота, предотвращает запуск нескольких экземпляров робота
     # режимы обработки сообщений: email, telegram
-    MODE_EMAIL, MODE_TELEGRAM = cbt_msg_type_v1['email'].get(), cbt_msg_type_v1['telegram'].get()
-
+    if APPMODE_INTERFACE:
+        MODE_EMAIL, MODE_TELEGRAM = cbt_msg_type_v1['email'].get(), cbt_msg_type_v1['telegram'].get()
     # подключение к базе данных TELEGRAM_DB
     if MODE_TELEGRAM:
         try:
@@ -116,7 +158,6 @@ async def robot():
         except Exception as e:
             print(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.", e)
             return 1
-    
     # чтение из бд данных о telegram-группах
     if MODE_TELEGRAM:
         telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor_telegram_db)
@@ -124,10 +165,16 @@ async def robot():
             await cursor_telegram_db.close()
             await cnxn_telegram_db.close()
             ROBOT_START, ROBOT_STOP = False, False
-            lbl_msg_robot["text"] = 'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+            if APPMODE_INTERFACE:
+                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+            elif APPMODE_CONSOLE:
+                print(f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}')
             return 1
 
-    lbl_msg_robot["text"] = 'Робот в рабочем режиме'
+    if APPMODE_INTERFACE:
+        lbl_msg_robot["text"] = 'Робот в рабочем режиме'
+    elif APPMODE_CONSOLE:
+            print('Робот в рабочем режиме')
 
     while not ROBOT_STOP:
         # обработка telegram-сообщений ====================================================================
@@ -137,7 +184,10 @@ async def robot():
                 await cursor_telegram_db.close()
                 await cnxn_telegram_db.close()
                 ROBOT_START, ROBOT_STOP = False, False
-                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+                if APPMODE_INTERFACE:
+                    lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
+                elif APPMODE_CONSOLE:
+                    print(f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}')
                 return 1
             print(telegram_msg_data_records)
             print()
@@ -153,7 +203,10 @@ async def robot():
                 await cursor_email_db.close()
                 await cnxn_email_db.close()
                 ROBOT_START, ROBOT_STOP = False, False
-                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
+                if APPMODE_INTERFACE:
+                    lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
+                elif APPMODE_CONSOLE:
+                    print(f'Ошибка чтения из базы данных email {EMAIL_DB}')
                 return 1
             print(email_msg_data_records)
             print()
@@ -182,6 +235,9 @@ async def robot():
                     await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
                 await smtp_client.quit()
             
+        if APPMODE_CONSOLE:
+            break
+
         await asyncio.sleep(CHECK_DB_PERIOD)
 
     #  действия после остановки робота
@@ -193,7 +249,8 @@ async def robot():
         await cnxn_email_db.close()
     print("Робот остановлен")
     ROBOT_START, ROBOT_STOP = False, False
-    lbl_msg_robot["text"] = 'Робот остановлен'
+    if APPMODE_INTERFACE:
+        lbl_msg_robot["text"] = 'Робот остановлен'
     if APP_EXIT:
         sys.exit()
 
@@ -342,7 +399,6 @@ async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data
                     except Exception as e:
                         print('Ошибка отправки:\n', e)    
                     
-
         await set_record_handling_time_in_telegram_db(cnxn_telegram_db, cursor_telegram_db, record_id)
         print('Запись из TELEGRAM_DB обработана.')  ####
 
@@ -371,6 +427,10 @@ async def load_records_from_email_db(cursor_email_db):
     except Exception as e:
         print(f'Ошибка чтения из базы данных EMAIL_DB {EMAIL_DB}.', e)
         return 1
+
+    if APPMODE_CONSOLE:
+        rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
+
     return rows
 
 async def load_records_from_telegram_db(cursor_telegram_db):
@@ -382,7 +442,10 @@ async def load_records_from_telegram_db(cursor_telegram_db):
     except Exception as e:
         print(f'Ошибка чтения из базы данных TELEGRAM_DB {TELEGRAM_DB}.', e)
         return 1
-    print('rows = ', rows) ###
+
+    if APPMODE_CONSOLE:
+        rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
+
     return rows
 
 
@@ -487,6 +550,14 @@ async def window_robot():
     lbl_msg_type.place(x=300, y=30)
     cbt_msg_type['email'].place(x=300, y=63)
     cbt_msg_type['telegram'].place(x=300, y=93)
+
+
+
+# ===========  ЗАПУСК ПРИЛОЖЕНИЯ В APPMODE_CONSOLE
+if APPMODE_CONSOLE:
+    loop_robot = asyncio.get_event_loop()
+    loop_robot.run_until_complete(robot())
+    sys.exit()
 
 
 # ============== window sign in
