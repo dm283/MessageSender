@@ -1,4 +1,4 @@
-import sys, configparser, re, datetime, asyncio, tkinter as tk
+import sys, configparser, re, datetime, asyncio, shutil, tkinter as tk
 import aioodbc
 from cryptography.fernet import Fernet
 from pathlib import Path
@@ -320,12 +320,15 @@ async def load_from_telegram_db(event):
 
 async def btn_attached_files_path_click(mode):
     # добавляет к записи прикрепленные файлы
-    initialdir = DIR_EMAIL_ATTACHMENTS if mode == 'email' else DIR_TELEGRAM_ATTACHMENTS
-    filepath = filedialog.askopenfilenames(initialdir=initialdir)
+    filepath = filedialog.askopenfilenames()
     if filepath != "":
-        filepath = list(map(lambda x: x.split('/')[-1], list(filepath)))
+        filepath_dir_attachments = list(map(lambda x: x.split('/')[-1], list(filepath)))
         postfix = '; ' if ent[mode]['attachments'].get(1.0, "end-1c").strip() else ''
-        ent[mode]['attachments'].insert("1.0", '; '.join(filepath) + postfix)
+        ent[mode]['attachments'].insert("1.0", '; '.join(filepath_dir_attachments) + postfix)
+    # копирование выбранных файлов в папки вложений
+    dst_dir = DIR_EMAIL_ATTACHMENTS if mode == 'email' else DIR_TELEGRAM_ATTACHMENTS
+    for file in filepath:
+        dest = shutil.copy(file, dst_dir)
 
 
 async def show_signin():
