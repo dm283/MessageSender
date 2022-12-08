@@ -341,7 +341,7 @@ async def show_signin():
 
     while not SIGN_IN_FLAG:
         root.update()
-        await asyncio.sleep(.1)
+        await asyncio.sleep(.01)
 
 
 async def show_send_msg():

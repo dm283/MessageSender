@@ -513,7 +513,7 @@ async def show():
     await window_signin()
     while not SIGN_IN_FLAG:
         root.update()
-        await asyncio.sleep(.1)
+        await asyncio.sleep(.01)
 
 development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
