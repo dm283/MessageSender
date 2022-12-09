@@ -309,6 +309,17 @@ async def show_admin():
             btn_test['email'].grid(row=0, column=0, padx=5, pady=5)    
             lbl_msg_test['email'].grid(row=0, column=1, padx=5, pady=5)
 
+    # специальный фрейм определения-добавления telegram-чатов
+    notebook.add(frm_chat_detect, text='Telegram-чаты')
+    lbl_chat_detect_descr.grid(row=0, columnspan=3, sticky='w', padx=5, pady=5)
+    lbl_chat_detect_entity_type.grid(row=1, column=0, sticky='w', padx=5, pady=5)
+    cmbx_chat_detect.grid(row=1, column=1, sticky='w', padx=5, pady=5)
+    lbl_chat_detect_name.grid(row=2, column=0, sticky='w', padx=5, pady=5)
+    ent_chat_detect_name.grid(row=2, column=1, sticky='w', padx=5, pady=5)
+    btn_chat_detect_detect.grid(row=3, column=0, sticky='w', padx=5, pady=5)
+    lbl_chat_detect_msg.grid(row=4, columnspan=3, sticky='w', padx=5, pady=5)
+
+    # фрейм 'Сохранить'
     frm_footer.pack(padx=10, pady=(0, 10), fill='both', expand=True)  
     btn_save_config.grid(row = 0, column = 0)
     lbl_config_msg.grid(row = 0, column = 1, padx = 10)
@@ -316,6 +327,186 @@ async def show_admin():
     while True:
         root_admin.update()
         await asyncio.sleep(.01)
+
+
+
+# === TELEGRAM CHAT DETECT FUNCTIONS ===
+async def detect_telegram_chat_id():
+# определяет для бота и telegram-сущности id их чата, после его создания
+    tet = cmbx_chat_detect.get().strip()
+    TELEGRAM_ENTITY_NAME = ent_chat_detect_name.get().strip()
+    print('tet', tet, 'ten', TELEGRAM_ENTITY_NAME)
+
+    if tet == '' or TELEGRAM_ENTITY_NAME == '':
+        lbl_chat_detect_msg['text'] = 'Заполните все поля с данными контакта.'
+        return 1
+    else:
+        lbl_chat_detect_msg['text'] = ''
+    
+    if tet in ('Telegram-пользователь', 'Администратор telegram-бота'): 
+        TELEGRAM_ENTITY_TYPE = 'user'
+    elif tet == 'Telegram-группа': 
+        TELEGRAM_ENTITY_TYPE = 'group'
+
+    try:
+        cnxn = await aioodbc.connect(dsn=config['telegram_bot']['db_connection_string'], loop=loop_admin)
+        cursor = await cnxn.cursor()
+    except:
+        lbl_chat_detect_msg['text'] = "Подключение к базе данных  -  ошибка"
+        print("Подключение к базе данных  -  ошибка")  ###
+        return 1
+
+    et = 'пользователем' if TELEGRAM_ENTITY_TYPE=='user' else 'группой'
+    check_res = await check_telegram_entity_in_db(TELEGRAM_ENTITY_TYPE, TELEGRAM_ENTITY_NAME, cnxn, cursor)
+    if check_res == 2:
+        await cursor.close()
+        await cnxn.close()
+        return 1
+    if check_res:  # проверяет наличие сущности в бд
+        lbl_chat_detect_msg['text'] = (f"chat_id бота {config['telegram_bot']['bot_name']} с {et} {TELEGRAM_ENTITY_NAME} " + 
+            "уже записан в базу данных.")
+        print(f"chat_id бота {config['telegram_bot']['bot_name']} с {et} {TELEGRAM_ENTITY_NAME} уже записан в базу данных.") ###
+        await cursor.close()
+        await cnxn.close()
+        return 0
+
+    if tet == 'Администратор telegram-бота':
+        check_res = await check_telegram_admin_exists(cnxn, cursor)
+        if check_res == 2:
+            await cursor.close()
+            await cnxn.close()
+            return 1
+        print(check_res)
+        if check_res:
+            lbl_chat_detect_msg['text'] = "В базе данных уже создан чат с администратором."
+            await cursor.close()
+            await cnxn.close()
+            return 0
+
+    lbl_chat_detect_msg['text'] = 'Отправка запроса api.telegram.org на получение событий бота .....'
+    print('Отправка запроса api.telegram.org на получение событий бота .....')
+    url = f"https://api.telegram.org/bot{config['telegram_bot']['bot_token']}/getUpdates"  # запрос обновлений бота
+    try:
+        res = requests.get(url).json()
+    except Exception as e:
+        lbl_chat_detect_msg['text'] = 'Ошибка: ', e
+        print('Ошибка: ', e) ###
+        await cursor.close()
+        await cnxn.close()
+        return 1
+    if res['ok'] == False:
+        lbl_chat_detect_msg['text'] = f'Получен ответ об ошибке:\n{res}'
+        print('Получен ответ об ошибке:')  ###
+        print(res)  ###
+        await cursor.close()
+        await cnxn.close()
+        return 1
+
+    # итерация с конца обновлений к началу, если бот удален из группы, выводит сообщение и заканчивает итерацию
+    if 'result' not in res:
+        lbl_chat_detect_msg['text'] = 'Ошибка, получен некорректный ответ, отсутствует поле result.'
+        print('Ошибка, получен некорректный ответ, отсутствует поле result.')  ###
+        return 1
+
+    chat_id = ''
+
+    for i in range(len(res['result']), 0, -1):
+        s = res['result'][i-1]
+
+        if TELEGRAM_ENTITY_TYPE == 'group':
+            if 'my_chat_member' in s and s['my_chat_member']['new_chat_member']['status'] == 'left':
+                break
+            if ('my_chat_member' in s 
+                and s['my_chat_member']['chat']['title'] == TELEGRAM_ENTITY_NAME 
+                and s['my_chat_member']['new_chat_member']['status'] == 'member'):
+                chat_id = int(s['my_chat_member']['chat']['id'])
+                print('group_chat_id:', chat_id)
+        elif TELEGRAM_ENTITY_TYPE == 'user':
+            if ('message' in s and 'chat' in s['message'] and 'username' in s['message']['chat']
+                    and s['message']['chat']['username'] == TELEGRAM_ENTITY_NAME):
+                chat_id = s['message']['chat']['id']
+                print('user_chat_id:', chat_id)
+            
+        if chat_id:
+            save_res = await save_telegram_chat_id_to_db(config['telegram_bot']['bot_name'], TELEGRAM_ENTITY_TYPE, 
+                TELEGRAM_ENTITY_NAME, tet, chat_id, cnxn, cursor)
+            if save_res == 2:
+                await cursor.close()
+                await cnxn.close()
+                return 1
+            lbl_chat_detect_msg['text'] = (f"chat_id бота {config['telegram_bot']['bot_name']} с {et} {TELEGRAM_ENTITY_NAME} " + 
+                "записан в базу данных.")
+            print(f"chat_id бота {config['telegram_bot']['bot_name']} с {et} {TELEGRAM_ENTITY_NAME} записан в базу данных.")  ###
+            await cursor.close()
+            await cnxn.close()
+            return 0
+    
+    if TELEGRAM_ENTITY_TYPE == 'group':
+        lbl_chat_detect_msg['text'] = (f'Ошибка определения чата с группой {TELEGRAM_ENTITY_NAME}.\n' + 
+            'Активируйте бота в telegram (если он не активирован) и/или добавьте в группу.\n' +
+            'Если бот в группе, попробуйте удалить его и добавить заново.')
+        print(f'Ошибка определения чата с группой {TELEGRAM_ENTITY_NAME}.')  ###
+        print('Активируйте бота в telegram (если он не активирован) и/или добавьте в группу.') ###
+        print('Если бот в группе, попробуйте удалить его и добавить заново.') ###
+    elif TELEGRAM_ENTITY_TYPE == 'user':
+        lbl_chat_detect_msg['text'] = (f'Ошибка определения чата с пользователем {TELEGRAM_ENTITY_NAME}.\n' +
+        f'Активируйте бота в telegram (если он не активирован)и/или отправьте ему сообщение\nот {TELEGRAM_ENTITY_NAME}.')
+        print(f'Ошибка определения чата с пользователем {TELEGRAM_ENTITY_NAME}.\n')  ###
+        print(f'Активируйте бота в telegram (если он не активирован) и/или отправьте ему сообщение от {TELEGRAM_ENTITY_NAME}.') ###
+
+    await cursor.close()
+    await cnxn.close()
+
+
+async def save_telegram_chat_id_to_db(BOT_NAME, TELEGRAM_ENTITY_TYPE, TELEGRAM_ENTITY_NAME, tet, chat_id, cnxn, cursor):
+    # сохраняет id и контакт telegram-чата в базу данных
+    try:
+        tet_for_insert = 'administrator' if tet == 'Администратор telegram-бота' else TELEGRAM_ENTITY_TYPE
+        query = f"""insert into {config['telegram_bot']['db_table_chats']} (chat_id, entity_name, entity_type, bot_name) values (
+            {chat_id}, '{TELEGRAM_ENTITY_NAME}', '{tet_for_insert}', '{BOT_NAME}')"""
+        await cursor.execute(query)
+        await cnxn.commit()
+    except Exception as e:
+        lbl_chat_detect_msg['text'] = 'Ошибка записи в базу данных.'
+        print('Ошибка записи в базу данных.', e)  ###
+        await cursor.close()
+        await cnxn.close()
+        return 2
+
+
+async def check_telegram_entity_in_db(TELEGRAM_ENTITY_TYPE, TELEGRAM_ENTITY_NAME, cnxn, cursor):
+    # проверка наличия telegram-сущности в базе данных
+    try:
+        entity_types = "'user', 'administrator'" if TELEGRAM_ENTITY_TYPE == 'user' else "'group'"
+        query = f"""select id from {config['telegram_bot']['db_table_chats']} where entity_name='{TELEGRAM_ENTITY_NAME}' 
+                and entity_type in ({entity_types}) and bot_name='{config['telegram_bot']['bot_name']}'"""
+        await cursor.execute(query)
+        rows = await cursor.fetchall()
+    except Exception as e:
+        print('Ошибка чтения из базы данных.', e)  ##
+        lbl_chat_detect_msg['text'] = 'Ошибка чтения из базы данных.'
+        await cursor.close()
+        await cnxn.close()
+        return 2
+    r = True if len(rows) > 0 else False
+    return r
+
+
+async def check_telegram_admin_exists(cnxn, cursor):
+    # проверка наличия чата с администратором в базе данных
+    try:
+        query = f"""select id from {config['telegram_bot']['db_table_chats']} where entity_type = 'administrator'
+            and bot_name='{config['telegram_bot']['bot_name']}'"""
+        await cursor.execute(query)
+        rows = await cursor.fetchall()
+    except Exception as e:
+        print('Ошибка чтения из базы данных.', e)  ###
+        lbl_chat_detect_msg['text'] = 'Ошибка чтения из базы данных.'
+        await cursor.close()
+        await cnxn.close()
+        return 2
+    r = True if len(rows) > 0 else False
+    return r
 
 # ============== window sign in
 root = tk.Tk()
@@ -370,8 +561,7 @@ for s in config.sections():
             lbl[s][k] = tk.Label(frm_params[s], bg=THEME_COLOR, text = v, font=('Segoe UI', 10, 'bold'))
             continue
         lbl[s][k] = tk.Label(frm_params[s], bg=THEME_COLOR,
-            text = config_show[s][k][1] if len(config_show[s][k]) > 1 else v,
-        width=27, anchor='w', )
+            text = config_show[s][k][1] if len(config_show[s][k]) > 1 else v, width=27, anchor='w', )
         ent[s][k] = tk.Entry(frm_params[s], width=30, highlightthickness=1, highlightcolor = "Gainsboro", )
 
 # формирование виджетов для полей со скрытием контента
@@ -399,8 +589,24 @@ lbl_msg_test['email'] = tk.Label(frm_test['email'], text='',
 
 # формирование фрейма с общим функционалом (сохранение конфига)
 frm_footer = tk.Frame(root_admin, width=400, height=280, )
-btn_save_config = tk.Button(frm_footer, text='Сохранить', width = 15, command=lambda: loop_admin.create_task(btn_save_config_click()))
+btn_save_config = tk.Button(frm_footer, text='Сохранить', width=15, command=lambda: loop_admin.create_task(btn_save_config_click()))
 lbl_config_msg = tk.Label(frm_footer, )
+
+# ******** вкладка добавления telegram-чата
+frm_chat_detect = tk.Frame(notebook, bg=THEME_COLOR, width=400, )
+lbl_chat_detect_descr = tk.Label(frm_chat_detect, bg=THEME_COLOR, text = 'Добавление telegram-чата:', 
+    font=('Segoe UI', 10, 'bold'))
+lbl_chat_detect_entity_type = tk.Label(frm_chat_detect, bg=THEME_COLOR,
+    text='Тип контакта', width=27, anchor='w', )
+entity_type_list = ['Telegram-группа', 'Telegram-пользователь', 'Администратор telegram-бота']
+var_telegram_entity_type = tk.StringVar()
+cmbx_chat_detect = ttk.Combobox(frm_chat_detect, textvariable=var_telegram_entity_type, width=48, values=entity_type_list, 
+    state='readonly')
+lbl_chat_detect_name = tk.Label(frm_chat_detect, bg=THEME_COLOR, text='Telegram-имя контакта', width=27, anchor='w', )
+ent_chat_detect_name = tk.Entry(frm_chat_detect, width=51, highlightthickness=1, highlightcolor = "Gainsboro", )
+btn_chat_detect_detect = tk.Button(frm_chat_detect, text='Добавить в список чатов', width = 20, 
+        command=lambda: loop_admin.create_task( detect_telegram_chat_id() ))
+lbl_chat_detect_msg = tk.Label(frm_chat_detect, text='', bg='orange', width=73, anchor='w', justify='left')
 
 
 loop_admin = asyncio.get_event_loop()
