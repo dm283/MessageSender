@@ -95,14 +95,20 @@ async def load_admin_bot_chat_id_from_db():
         return 1
     try:
         query = f"""select chat_id from {config['telegram_bot']['db_table_chats']} 
-            where entity_type='administrator' and bot_name='{config['telegram_bot']['bot_name']}' and is_active"""
+            where entity_type='administrator' and bot_name='{config['telegram_bot']['bot_name']}'"""
         await cursor.execute(query)
         rows = await cursor.fetchall()
+        print(rows)
+        if len(rows) == 0:
+            lbl_msg_test['telegram_bot']['text'] = 'Ошибка: чат с администратором отсутствует в базе данных'
+            await cursor.close()
+            await cnxn.close()
+            return 1
         ADMIN_BOT_CHAT_ID = [row[0] for row in rows][0]
     except:
         await cursor.close()
         await cnxn.close()
-        lbl_msg_test['telegram_bot']['text'] = 'Ошибка чтения id чата бота с администратором из базы данных'
+        lbl_msg_test['telegram_bot']['text'] = 'Ошибка чтения id чата бота с администратором\nиз базы данных'
         return 1
     await cursor.close()
     await cnxn.close()
@@ -330,7 +336,7 @@ btn_sign = tk.Button(master=frm, bg=BTN_COLOR, fg='White', text='Sign in', font=
                     width=22, height=1, command=lambda: loop.create_task(btn_sign_click()))
 lbl_msg_sign = tk.Label(master=frm, bg=LBL_COLOR, fg='PaleVioletRed', font=("Arial", 12), width=25, height=2)
 
-development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:
@@ -385,11 +391,11 @@ btn_test, lbl_msg_test = {}, {}
 btn_test['telegram_bot'] = tk.Button(frm_test['telegram_bot'], text='Тест', width = 15, 
         command=lambda: loop_admin.create_task(btn_test_telegram_click()))
 lbl_msg_test['telegram_bot'] = tk.Label(frm_test['telegram_bot'], text='', 
-        bg=THEME_COLOR, width = 45, anchor='w', )
+        bg=THEME_COLOR, width = 54, anchor='w', )
 btn_test['email'] = tk.Button(frm_test['email'], text='Тест', width = 15, 
         command=lambda: loop_admin.create_task(btn_test_email_click()))
 lbl_msg_test['email'] = tk.Label(frm_test['email'], text='', 
-        bg=THEME_COLOR, width = 45, anchor='w', )
+        bg=THEME_COLOR, width = 54, anchor='w', )
 
 # формирование фрейма с общим функционалом (сохранение конфига)
 frm_footer = tk.Frame(root_admin, width=400, height=280, )

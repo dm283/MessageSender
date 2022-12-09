@@ -407,7 +407,7 @@ async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data
 async def load_telegram_chats_from_db(cursor_telegram_db):
     # выборка из базы данных параметров telegram-чатов бота
     try:
-        query = f"select entity_name, chat_id, entity_type from {TELEGRAM_DB_TABLE_CHATS} where bot_name='{BOT_NAME}' and is_active"
+        query = f"select entity_name, chat_id, entity_type from {TELEGRAM_DB_TABLE_CHATS} where bot_name='{BOT_NAME}'"
         await cursor_telegram_db.execute(query)
         rows = await cursor_telegram_db.fetchall()
         telegram_chats_dict = {row[0]: row[1] for row in rows}

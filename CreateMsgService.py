@@ -305,7 +305,7 @@ async def load_from_telegram_db(event):
     entity_types = "'user', 'administrator'" if entity_type == 'Telegram-пользователь' else "'group'"
     try:
         query = f"""select distinct entity_name from {TELEGRAM_DB_TABLE_CHATS} 
-            where entity_type in ({entity_types}) and bot_name='{BOT_NAME}' and is_active"""
+            where entity_type in ({entity_types}) and bot_name='{BOT_NAME}'"""
         await cursor.execute(query)
         res = await cursor.fetchall()
         await cursor.close()

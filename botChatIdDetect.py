@@ -117,7 +117,7 @@ async def check_telegram_entity_in_db(cnxn, cursor):
     try:
         entity_types = "'user', 'administrator'" if tet in ('-u', '-ua') else "'group'"
         query = f"""select id from {TELEGRAM_DB_TABLE_CHATS} where entity_name='{TELEGRAM_ENTITY_NAME}' 
-                and entity_type in ({entity_types}) and bot_name='{BOT_NAME}' and is_active"""
+                and entity_type in ({entity_types}) and bot_name='{BOT_NAME}'"""
         await cursor.execute(query)
         rows = await cursor.fetchall()
     except:
