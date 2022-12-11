@@ -5,6 +5,7 @@
 *.ini
 venv/
 рабочие/
+сервисные/
 build/
 attachments_email/
 attachments_telegram/
