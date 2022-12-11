@@ -606,7 +606,7 @@ lbl_chat_detect_name = tk.Label(frm_chat_detect, bg=THEME_COLOR, text='Telegram-
 ent_chat_detect_name = tk.Entry(frm_chat_detect, width=51, highlightthickness=1, highlightcolor = "Gainsboro", )
 btn_chat_detect_detect = tk.Button(frm_chat_detect, text='Добавить в список чатов', width = 20, 
         command=lambda: loop_admin.create_task( detect_telegram_chat_id() ))
-lbl_chat_detect_msg = tk.Label(frm_chat_detect, text='', bg='orange', width=73, anchor='w', justify='left')
+lbl_chat_detect_msg = tk.Label(frm_chat_detect, text='', bg=THEME_COLOR, width=73, anchor='w', justify='left')
 
 
 loop_admin = asyncio.get_event_loop()
