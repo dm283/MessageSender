@@ -11,31 +11,80 @@ from email import encoders
 
 
 # загрузка конфигурации
-CONFIG_FILE = 'config.ini'
-config = configparser.ConfigParser()
-config.read(CONFIG_FILE, encoding='utf-8')
+
+CONFIG_FILE = Path().absolute() / 'config.ini'
+if CONFIG_FILE.exists():
+    config = configparser.ConfigParser()
+    config.read(CONFIG_FILE, encoding='utf-8')
+else:
+    print('Ошибка запуска приложения:  отсутствует конфигурационный файл config.ini')
+    sys.exit()
 
 # загрузка ключа шифрования
-with open('rec-k.txt') as f:
-    rkey = f.read().encode('utf-8')
-refKey = Fernet(rkey)
+KEY_FILE = Path().absolute() / 'rec-k.txt'
+if KEY_FILE.exists():
+    with open(KEY_FILE) as f:
+        rkey = f.read().encode('utf-8')
+else:
+    print('Ошибка запуска приложения:  отсутствует ключ шифрования')
+    sys.exit()
+
+try:
+    refKey = Fernet(rkey)
+except Exception as ex:
+    print('Ошибка ключа шифрования:  ', ex)
+    sys.exit()
+
+try:
+    hashed_user_credentials_password = config['user_credentials']['password'].split('\t#')[0]
+    hashed_common_bot_token = config['telegram_bot']['bot_token'].split('\t#')[0]
+    hashed_email_server_password = config['email']['server_password'].split('\t#')[0]
+    USER_NAME = config['user_credentials']['name'].split('\t#')[0]
+    DIR_LOG = Path(config['common']['dir_log'].split('\t#')[0])
+    CHECK_DB_PERIOD = int(config['common']['check_db_period'].split('\t#')[0])  # период проверки новых записей в базе данных
+    DIR_EMAIL_ATTACHMENTS = Path(config['common']['dir_email_attachments'].split('\t#')[0])  # директория с файлами для отправки
+    DIR_TELEGRAM_ATTACHMENTS = Path(config['common']['dir_telegram_attachments'].split('\t#')[0])
+    #Path('c:/Users/dm283/Documents/Tech/ALTA/MessageSender/attachments')
+    #Path().absolute() / 'attachments'
+    ADMIN_EMAIL = config['admin_credentials']['email'].split('\t#')[0]  # почта админа
+    BOT_NAME = config['telegram_bot']['bot_name'].split('\t#')[0]
+    TELEGRAM_DB = config['telegram_bot']['db'].split('\t#')[0]  # база данных mssql/posgres
+    TELEGRAM_DB_TABLE_MESSAGES = config['telegram_bot']['db_table_messages'].split('\t#')[0]  # db.schema.table
+    TELEGRAM_DB_TABLE_CHATS = config['telegram_bot']['db_table_chats'].split('\t#')[0]  # db.schema.table  таблица с telegram-чатами
+    TELEGRAM_DB_CONNECTION_STRING = config['telegram_bot']['db_connection_string'].split('\t#')[0]  # odbc driver system dsn name
+    ADMIN_BOT_CHAT_ID = str()  # объявление глобальной константы, которая записывается в функции load_telegram_chats_from_db
+    MODE_EMAIL, MODE_TELEGRAM = bool(), bool()
+    SENDER_EMAIL = config['email']['sender_email'].split('\t#')[0]
+    SMTP_HOST, SMTP_PORT = config['email']['smtp_host'].split('\t#')[0], config['email']['smtp_port'].split('\t#')[0]
+    TEST_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}
+    Subject: Mailsender - тестовое сообщение\n
+    Это тестовое сообщение отправленное сервисом Mailsender.""".encode('utf8')
+    UNDELIVERED_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}\nSubject: MessageSender - недоставленное сообщение\n
+    \rЭто сообщение отправленно сервисом MessageSender.\n""".encode('utf8')
+    IMAP_HOST, IMAP_PORT = config['email']['imap_host'].split('\t#')[0], config['email']['imap_port'].split('\t#')[0]
+    EMAIL_DB = config['email']['db'].split('\t#')[0]
+    EMAIL_DB_CONNECTION_STRING = config['email']['db_connection_string'].split('\t#')[0]
+    EMAIL_DB_TABLE_EMAILS = config['email']['db_table_emails'].split('\t#')[0]
+except Exception as ex:
+    print(f'Ошибка в конфигурационном файле {CONFIG_FILE}:', ex)
+    sys.exit()
 
 # расшифровка хэшированных значений конфигурации
-hashed_user_credentials_password = config['user_credentials']['password'].split('\t#')[0]
-user_credentials_password = (refKey.decrypt(hashed_user_credentials_password).decode('utf-8'))
-hashed_common_bot_token = config['telegram_bot']['bot_token'].split('\t#')[0]
-common_bot_token = (refKey.decrypt(hashed_common_bot_token).decode('utf-8'))
-hashed_email_server_password = config['email']['server_password'].split('\t#')[0]
-email_server_password = (refKey.decrypt(hashed_email_server_password).decode('utf-8'))
+try:
+    user_credentials_password = (refKey.decrypt(hashed_user_credentials_password).decode('utf-8'))
+    common_bot_token = (refKey.decrypt(hashed_common_bot_token).decode('utf-8'))
+    email_server_password = (refKey.decrypt(hashed_email_server_password).decode('utf-8'))
+    USER_PASSWORD = user_credentials_password
+    BOT_TOKEN = common_bot_token
+    EMAIL_SERVER_PASSWORD = email_server_password
+except Exception as ex:
+    print('Ошибка хэшированных значений конфигурационного файла  ', ex)
+    sys.exit()
 
-USER_NAME = config['user_credentials']['name'].split('\t#')[0]
-USER_PASSWORD = user_credentials_password
+REGEX_EMAIL_VALID = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b' # шаблон для валидации e-mail адреса
 
-# создание logger
-# debug+ level - пишется в консоль - dev логи
-# info+ level  -  пишутся в файл  -  prom логи
+# создание logger: # debug+ level - пишется в консоль - dev логи  # info+ level  -  пишутся в файл  -  prom логи
 # создание директории логов и лога текущего дня при отсутствии
-DIR_LOG = Path(config['common']['dir_log'].split('\t#')[0])
 LOG_FILENAME = DIR_LOG / f'log-{str(datetime.datetime.now().strftime("%Y-%m-%d"))}.log'
 if not DIR_LOG.exists():
     DIR_LOG.mkdir()
@@ -52,42 +101,11 @@ handler_logfile.setLevel(logging.INFO)
 handler_logfile.setFormatter(logging.Formatter(f'%(asctime)s    {USER_NAME}    %(levelname)s    %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
 logger.addHandler(handler_logfile)
 
-CHECK_DB_PERIOD = int(config['common']['check_db_period'].split('\t#')[0])  # период проверки новых записей в базе данных
-DIR_EMAIL_ATTACHMENTS = Path(config['common']['dir_email_attachments'].split('\t#')[0])  # директория с файлами для отправки
-DIR_TELEGRAM_ATTACHMENTS = Path(config['common']['dir_telegram_attachments'].split('\t#')[0])
-#Path('c:/Users/dm283/Documents/Tech/ALTA/MessageSender/attachments')
-#Path().absolute() / 'attachments'
-
-ADMIN_EMAIL = config['admin_credentials']['email'].split('\t#')[0]  # почта админа
-
-BOT_NAME = config['telegram_bot']['bot_name'].split('\t#')[0]
-BOT_TOKEN = common_bot_token
-TELEGRAM_DB = config['telegram_bot']['db'].split('\t#')[0]  # база данных mssql/posgres
-TELEGRAM_DB_TABLE_MESSAGES = config['telegram_bot']['db_table_messages'].split('\t#')[0]  # db.schema.table
-TELEGRAM_DB_TABLE_CHATS = config['telegram_bot']['db_table_chats'].split('\t#')[0]  # db.schema.table  таблица с telegram-чатами
-TELEGRAM_DB_CONNECTION_STRING = config['telegram_bot']['db_connection_string'].split('\t#')[0]  # odbc driver system dsn name
-ADMIN_BOT_CHAT_ID = str()  # объявление глобальной константы, которая записывается в функции load_telegram_chats_from_db
-MODE_EMAIL, MODE_TELEGRAM = bool(), bool()
-
-SENDER_EMAIL, EMAIL_SERVER_PASSWORD = config['email']['sender_email'].split('\t#')[0], email_server_password
-SMTP_HOST, SMTP_PORT = config['email']['smtp_host'].split('\t#')[0], config['email']['smtp_port'].split('\t#')[0]
-TEST_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}
-Subject: Mailsender - тестовое сообщение\n
-Это тестовое сообщение отправленное сервисом Mailsender.""".encode('utf8')
-UNDELIVERED_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}
-Subject: Mailsender - недоставленное сообщение\n
-Это сообщение отправленно сервисом Mailsender.\n""".encode('utf8')
-IMAP_HOST, IMAP_PORT = config['email']['imap_host'].split('\t#')[0], config['email']['imap_port'].split('\t#')[0]
-EMAIL_DB = config['email']['db'].split('\t#')[0]
-EMAIL_DB_CONNECTION_STRING = config['email']['db_connection_string'].split('\t#')[0]
-EMAIL_DB_TABLE_EMAILS = config['email']['db_table_emails'].split('\t#')[0]
-
-REGEX_EMAIL_VALID = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b' # шаблон для валидации e-mail адреса
-
-ERROR_EMAIL_LIST = []  # список несуществующих адресов
-error_email_list_path = 'error-emails-list.log'
-if os.path.exists(error_email_list_path):
-    with open(error_email_list_path, 'r') as f:
+# список несуществующих адресов
+ERROR_EMAIL_LIST = []
+ERROR_LIST_FILE = Path().absolute() / 'error_emails_list.txt'
+if ERROR_LIST_FILE.exists():
+    with open(ERROR_LIST_FILE, 'r') as f:
         for l in f.readlines():
             ERROR_EMAIL_LIST.append(l.split('\t')[-1].strip())
 
@@ -113,8 +131,16 @@ RUNNER_COLOR = 'DodgerBlue'
 # APPMODE_INTERFACE - none argv
 # APPMODE_CONSOLE - MsgSender -console -username -userpassword -email/telegram/all-channels -cntrecs/all
 APPMODE_INTERFACE, APPMODE_CONSOLE, IS_ALL_RECS = bool(), bool(), bool()
+help_msg = ("Режимы запуска приложения:\n" +
+    "- стандартный запуск с интерфейсом пользователя (имя приложения без аргументов командной строки)\n" +
+    "- разовый запуск с аргументами -console -[username] -[userpassword] -email/telegram/all-channels -cntrecs/all\n" +
+    "аргумент кол-ва загружаемых из базы данных записей -cntrecs/all необязателен, " +
+        f"при его отсутствии значение берется из конфигурационного файла {CONFIG_FILE}")
+
 if len(sys.argv) == 1:
     APPMODE_INTERFACE = True
+elif len(sys.argv) == 2 and sys.argv[1] == '-help':
+    print(help_msg)
 elif len(sys.argv) >= 5 and len(sys.argv) <= 6 and sys.argv[1] == '-console':
     APPMODE_CONSOLE = True
     user, password = sys.argv[2][1:], sys.argv[3][1:]
@@ -123,7 +149,7 @@ elif len(sys.argv) >= 5 and len(sys.argv) <= 6 and sys.argv[1] == '-console':
         sys.exit()
     if sys.argv[4][1:] not in ('email', 'telegram', 'all-channels'):
         print('Ошибка:  в аргументах указан некорректный канал сообщений [email/telegram/all-channels].')
-        print('Формат запуска:  MsgSender -console -username -userpassword -email/telegram/all-channels -cntrecs/all')
+        print(help_msg)
         sys.exit()
     MODE_EMAIL = True if sys.argv[4][1:] in ('email', 'all-channels') else False
     MODE_TELEGRAM = True if sys.argv[4][1:] in ('telegram', 'all-channels') else False
@@ -145,7 +171,7 @@ elif len(sys.argv) >= 5 and len(sys.argv) <= 6 and sys.argv[1] == '-console':
             IS_ALL_RECS = True
 else:
     print('Ошибка запуска приложения.')
-    print('Формат запуска:  MsgSender -console -username -userpassword -email/telegram/all-channels -cntrecs/all')
+    print(help_msg)
     sys.exit()
 
 # === MESSENGER FUNCTIONS ===
@@ -158,86 +184,68 @@ async def robot():
     # режимы обработки сообщений: email, telegram
     if APPMODE_INTERFACE:
         MODE_EMAIL, MODE_TELEGRAM = cbt_msg_type_v1['email'].get(), cbt_msg_type_v1['telegram'].get()
+
+    cnxn_telegram_db, cursor_telegram_db, cnxn_email_db, cursor_email_db = '', '', '', ''
     # подключение к базе данных TELEGRAM_DB
     if MODE_TELEGRAM:
         try:
             cnxn_telegram_db = await aioodbc.connect(dsn=TELEGRAM_DB_CONNECTION_STRING, loop=loop_robot)
             cursor_telegram_db = await cnxn_telegram_db.cursor()
-            #print(f'Создано подключение к базе данных telegram {TELEGRAM_DB}')  ###
-            logger.debug(f'Создано подключение к базе данных telegram {TELEGRAM_DB}')
-        except Exception as e:
-            #print(f"Подключение к базе данных telegram {TELEGRAM_DB} -  ошибка.", e)
-            logger.exception(f"Подключение к базе данных telegram {TELEGRAM_DB} -  ошибка.")
+            logger.debug(f'Создано подключение к базе данных {TELEGRAM_DB}')
+        except Exception as ex:
+            logger.exception(f"Ошибка подключения к базе данных {TELEGRAM_DB}:   {ex}" )
+            lbl_msg_robot["text"] = f'Ошибка подключения к базе данных {TELEGRAM_DB}'
+            await asyncio.sleep(2)
+            await stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_db, cnxn_email_db)
             return 1
     # подключение к базе данных EMAIL_DB
     if MODE_EMAIL:
         try:
             cnxn_email_db = await aioodbc.connect(dsn=EMAIL_DB_CONNECTION_STRING, loop=loop_robot)
             cursor_email_db = await cnxn_email_db.cursor()
-            # print(f'Создано подключение к базе данных email {EMAIL_DB}')  ###
-            logger.debug(f'Создано подключение к базе данных email {EMAIL_DB}')
-        except Exception as e:
-            # print(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.", e)
-            logger.exception(f"Подключение к базе данных email {EMAIL_DB} -  ошибка.")
+            logger.debug(f'Создано подключение к базе данных {EMAIL_DB}')
+        except Exception as ex:
+            logger.exception(f"Ошибка подключения к базе данных {EMAIL_DB}:   {ex}")
+            lbl_msg_robot["text"] = f'Ошибка подключения к базе данных {EMAIL_DB}'
+            await asyncio.sleep(2)
+            await stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_db, cnxn_email_db)
             return 1
     # чтение из бд данных о telegram-группах
     if MODE_TELEGRAM:
-        telegram_chats, ADMIN_BOT_CHAT_ID = await load_telegram_chats_from_db(cursor_telegram_db)
-        if telegram_chats == 1:
-            await cursor_telegram_db.close()
-            await cnxn_telegram_db.close()
-            ROBOT_START, ROBOT_STOP = False, False
-            if APPMODE_INTERFACE:
-                lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
-            # elif APPMODE_CONSOLE:
-            #     print(f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}')
+        res = await load_telegram_chats_from_db(cursor_telegram_db)
+        if res == 1:
+            await asyncio.sleep(2)
+            await stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_db, cnxn_email_db)
             return 1
+        telegram_chats, ADMIN_BOT_CHAT_ID = res
 
     if APPMODE_INTERFACE:
         lbl_msg_robot["text"] = 'Робот в рабочем режиме'
-    # elif APPMODE_CONSOLE:
-    #     print('Робот в рабочем режиме')
     logger.info('Робот в рабочем режиме')
 
     while not ROBOT_STOP:
         # обработка telegram-сообщений ====================================================================
         if MODE_TELEGRAM:
-            telegram_msg_data_records = await load_records_from_telegram_db(cursor_telegram_db)
+            telegram_msg_data_records = await load_records_from_db('telegram', cursor_telegram_db)  #load_records_from_telegram_db(cursor_telegram_db)
             if telegram_msg_data_records == 1:
-                await cursor_telegram_db.close()
-                await cnxn_telegram_db.close()
-                ROBOT_START, ROBOT_STOP = False, False
-                if APPMODE_INTERFACE:
-                    lbl_msg_robot["text"] = f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}'
-                # elif APPMODE_CONSOLE:
-                #     print(f'Ошибка чтения из базы данных telegram {TELEGRAM_DB}')
+                await asyncio.sleep(2)
+                await stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_db, cnxn_email_db)
                 return 1
-            # print(telegram_msg_data_records)
-            # print()
             if len(telegram_msg_data_records) > 0:
                 await robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, telegram_msg_data_records, telegram_chats)
             else:
-                #print(f'Нет новых сообщений в базе данных telegram {TELEGRAM_DB}.')  ### test
                 logger.debug(f'Нет новых сообщений в базе данных telegram {TELEGRAM_DB}.')
 
         # обработка email-сообщений ======================================================================
         if MODE_EMAIL:
-            email_msg_data_records = await load_records_from_email_db(cursor_email_db)
+            email_msg_data_records = await load_records_from_db('email', cursor_email_db)  #load_records_from_email_db(cursor_email_db)
             if email_msg_data_records == 1:
-                await cursor_email_db.close()
-                await cnxn_email_db.close()
-                ROBOT_START, ROBOT_STOP = False, False
-                if APPMODE_INTERFACE:
-                    lbl_msg_robot["text"] = f'Ошибка чтения из базы данных email {EMAIL_DB}'
-                # elif APPMODE_CONSOLE:
-                #     print(f'Ошибка чтения из базы данных email {EMAIL_DB}')
+                await asyncio.sleep(2)
+                await stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_db, cnxn_email_db)
                 return 1
-            # print(email_msg_data_records)
-            # print()
             if len(email_msg_data_records) > 0:
                 await robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records)
             else:
-                #print(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')  ### test
                 logger.debug(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')
 
             #  email - недоставленные сообщения: проверка оповещений, запись в лог и отправка на почту админа
@@ -246,18 +254,20 @@ async def robot():
                 smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
                 await smtp_client.connect()
                 for u in undelivereds:
-                    #print(f'undelivered:  {u}')
                     logger.debug(f'undelivered:  {u}')
                     log_msg = f'Недоставлено сообщение, отправленное {u[0]} на несуществующий адрес {u[1]}'
                     logger.error(log_msg)
-                    #await rec_to_log(log_rec)
                     # запись несуществующего адреса в error-email-list
                     eel_rec = f'{u[0]}\t{u[1]}'
                     await rec_to_error_emails_list(eel_rec)
                     if u[1] not in ERROR_EMAIL_LIST:
                         ERROR_EMAIL_LIST.append(u[1])
+                    # отправка сообщения о несуществующем адресе на почту администратора
                     msg = UNDELIVERED_MESSAGE + log_msg.encode('utf-8')
-                    await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
+                    try:
+                        await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
+                    except Exception as ex:
+                        logger.error(f'Ошибка отправки email на почту администратора {ADMIN_EMAIL}:   {ex}')
                 await smtp_client.quit()
             
         if APPMODE_CONSOLE:
@@ -265,14 +275,21 @@ async def robot():
 
         await asyncio.sleep(CHECK_DB_PERIOD)
 
+    # #  действия после остановки робота
+    await stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_db, cnxn_email_db)
+
+
+async def stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_db, cnxn_email_db):
     #  действия после остановки робота
-    if MODE_TELEGRAM:
+    global ROBOT_START, ROBOT_STOP
+    if MODE_TELEGRAM and cnxn_telegram_db and cursor_telegram_db:
+        logger.debug('close tele')
         await cursor_telegram_db.close()
         await cnxn_telegram_db.close()
-    if MODE_EMAIL:
+    if MODE_EMAIL and cnxn_email_db and cursor_email_db:
+        logger.debug('close email')
         await cursor_email_db.close()
         await cnxn_email_db.close()
-    #print("Робот остановлен")
     ROBOT_START, ROBOT_STOP = False, False
     if APPMODE_INTERFACE:
         lbl_msg_robot["text"] = 'Робот остановлен'
@@ -280,6 +297,7 @@ async def robot():
     if APP_EXIT:
         logger.info('Выход из приложения')
         sys.exit()
+
 
 
 async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records):
@@ -457,43 +475,67 @@ async def load_telegram_chats_from_db(cursor_telegram_db):
         telegram_chats_dict = {row[0]: row[1] for row in rows}
         ADMIN_BOT_CHAT_ID = [row[1] for row in rows if row[2] == 'administrator'][0]
         return telegram_chats_dict, ADMIN_BOT_CHAT_ID
-    except Exception as e:
-        # print('Ошибка чтения из базы данных TELEGRAM_DB.', e)
-        logger.exception(f'Ошибка чтения из базы данных TELEGRAM_DB {TELEGRAM_DB}.')
+    except Exception as ex:
+        logger.exception(f'Ошибка чтения telegram-чатов из базы данных {TELEGRAM_DB}:   {ex}')
+        if APPMODE_INTERFACE:
+                lbl_msg_robot["text"] = f'Ошибка чтения telegram-чатов из базы данных {TELEGRAM_DB}'
         return 1
 
 
-async def load_records_from_email_db(cursor_email_db):
-    # выборка из базы данных EMAIL_DB необработанных (новых) записей
+async def load_records_from_db(mode, cursor):
+    # выборка из базы данных EMAIL_DB/TELEGRAM_DB необработанных (новых) записей
     try:
-        await cursor_email_db.execute(f"""select UniqueIndexField, subj, textemail, adrto, attachmentfiles from {EMAIL_DB_TABLE_EMAILS} 
-                where dates is null order by datep""")
-        rows = await cursor_email_db.fetchall()  # список кортежей
-    except Exception as e:
-        #print(f'Ошибка чтения из базы данных EMAIL_DB {EMAIL_DB}.', e)
-        logger.exception(f'Ошибка чтения из базы данных EMAIL_DB {EMAIL_DB}.')
+        if mode == 'email':
+            tbl = EMAIL_DB_TABLE_EMAILS 
+            query = f"""select UniqueIndexField, subj, textemail, adrto, attachmentfiles from {EMAIL_DB_TABLE_EMAILS} 
+                    where dates is null order by datep"""
+        elif mode == 'telegram':
+            tbl = TELEGRAM_DB_TABLE_MESSAGES
+            query = f"""select UniqueIndexField, msg_text, adrto, attachmentfiles from {TELEGRAM_DB_TABLE_MESSAGES} 
+            where dates is null order by datep"""
+        await cursor.execute(query)
+        rows = await cursor.fetchall()  # список кортежей
+    except Exception as ex:
+        msg = f'Ошибка чтения из таблицы {tbl}'
+        logger.exception(msg + f':  {ex}')
+        if APPMODE_INTERFACE:
+            lbl_msg_robot["text"] = msg
         return 1
-
     if APPMODE_CONSOLE:
         rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
-
     return rows
 
-async def load_records_from_telegram_db(cursor_telegram_db):
-    # выборка из базы данных TELEGRAM_DB необработанных (новых) записей
-    try:
-        await cursor_telegram_db.execute(f"""select UniqueIndexField, msg_text, adrto, attachmentfiles from {TELEGRAM_DB_TABLE_MESSAGES} 
-            where dates is null order by datep""")
-        rows = await cursor_telegram_db.fetchall()  # список кортежей
-    except Exception as e:
-        #print(f'Ошибка чтения из базы данных TELEGRAM_DB {TELEGRAM_DB}.', e)
-        logger.exception('Ошибка чтения из базы данных TELEGRAM_DB {TELEGRAM_DB}.')
-        return 1
+# async def load_records_from_email_db(cursor_email_db):
+#     # выборка из базы данных EMAIL_DB необработанных (новых) записей
+#     try:
+#         await cursor_email_db.execute(f"""select UniqueIndexField, subj, textemail, adrto, attachmentfiles from {EMAIL_DB_TABLE_EMAILS} 
+#                 where dates is null order by datep""")
+#         rows = await cursor_email_db.fetchall()  # список кортежей
+#     except Exception as ex:
+#         msg = f'Ошибка чтения из таблицы {EMAIL_DB_TABLE_EMAILS}'
+#         logger.exception(msg + f':  {ex}')
+#         if APPMODE_INTERFACE:
+#             lbl_msg_robot["text"] = msg
+#         return 1
+#     if APPMODE_CONSOLE:
+#         rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
+#     return rows
 
-    if APPMODE_CONSOLE:
-        rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
-
-    return rows
+# async def load_records_from_telegram_db(cursor_telegram_db):
+#     # выборка из базы данных TELEGRAM_DB необработанных (новых) записей
+#     try:
+#         await cursor_telegram_db.execute(f"""select UniqueIndexField, msg_text, adrto, attachmentfiles from {TELEGRAM_DB_TABLE_MESSAGES} 
+#             where dates is null order by datep""")
+#         rows = await cursor_telegram_db.fetchall()  # список кортежей
+#     except Exception as ex:
+#         msg = f'Ошибка чтения из таблицы {TELEGRAM_DB_TABLE_MESSAGES}'
+#         logger.exception(msg + f':  {ex}')
+#         if APPMODE_INTERFACE:
+#             lbl_msg_robot["text"] = msg
+#         return 1
+#     if APPMODE_CONSOLE:
+#         rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
+#     return rows
 
 
 async def set_record_handling_time_in_email_db(cnxn_email_db, cursor_email_db, id):
@@ -514,7 +556,7 @@ async def set_record_handling_time_in_telegram_db(cnxn_telegram_db, cursor_teleg
 async def rec_to_error_emails_list(rec):
     # добавляет несуществующий email адрес в error_emails_list
     current_time = str(datetime.datetime.now())
-    with open('error-emails-list.log', 'a') as f:
+    with open(ERROR_LIST_FILE, 'a') as f:
         f.write(f'{current_time}\t{rec}\n')
 
 
@@ -558,7 +600,10 @@ async def btn_robot_run_click():
         # при запуске робота checkbuttons выбора сообщений деактивируются
         cbt_msg_type['email']['state'], cbt_msg_type['telegram']['state'] = 'disabled', 'disabled'
         await asyncio.sleep(1)
-        await robot()
+        res = await robot()
+        # if res == 2:  # если в функции robot() произошла ошибка, робот останавливается
+        #     lbl_msg_robot["text"] = 'Остановка робота...'
+        #     ROBOT_STOP = True
         # после остановки или незапуска робота checkbuttons выбора сообщений активируются
         cbt_msg_type['email']['state'], cbt_msg_type['telegram']['state'] = 'normal', 'normal'
 
@@ -629,7 +674,7 @@ async def show():
 
 logger.info(f'Запуск приложения в режиме Интерфейс')
 
-development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:
