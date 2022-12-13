@@ -175,6 +175,10 @@ else:
     print(help_msg)
     sys.exit()
 
+print('IS_ALL_RECS', IS_ALL_RECS)  ###
+if not IS_ALL_RECS:
+    print('CNT_RECS', CNT_RECS)  ###
+
 # === MESSENGER FUNCTIONS ===
 async def robot():
     # запускает робота
@@ -321,11 +325,9 @@ async def stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_d
     #  действия после остановки робота
     global ROBOT_START, ROBOT_STOP
     if MODE_TELEGRAM and cnxn_telegram_db and cursor_telegram_db:
-        logger.debug('close tele')
         await cursor_telegram_db.close()
         await cnxn_telegram_db.close()
     if MODE_EMAIL and cnxn_email_db and cursor_email_db:
-        logger.debug('close email')
         await cursor_email_db.close()
         await cnxn_email_db.close()
     ROBOT_START, ROBOT_STOP = False, False
@@ -493,12 +495,11 @@ async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data
                         logger.exception('Ошибка отправки файла в telegram-чат')
 
         status, ex = await set_record_handling_time_in_telegram_db(cnxn_telegram_db, cursor_telegram_db, record_id)
-        logger.debug(f'status {status}')
         if status == 1:
             return 2, ex
 
         logger.debug('Запись из TELEGRAM_DB обработана.')
-        return 0, ''
+    return 0, ''
 
 
 # === DATABASE FUNCTIONS ===
@@ -547,6 +548,8 @@ async def load_records_from_db(mode, cursor):
         return 1
     if APPMODE_CONSOLE:
         rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
+        logger.debug('len rows')
+        logger.debug(len(rows))
     return rows
 
 
