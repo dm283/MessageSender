@@ -695,7 +695,7 @@ async def show():
 
 logger.info(f'Запуск приложения в режиме Интерфейс')
 
-development_mode = True     # True - для разработки окна робота переход сразу на него без sign in
+development_mode = False     # True - для разработки окна робота переход сразу на него без sign in
 if development_mode:    # для разработки окна робота переход сразу на него без sign in
     SIGN_IN_FLAG = True
 else:

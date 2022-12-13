@@ -385,7 +385,7 @@ async def show_send_msg():
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('InsertDBMsgService')
+root.title('CreateMsgService')
 frm = tk.Frame(bg=THEME_COLOR, width=400, height=350)
 lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=(TK_FONT, 12), anchor='w', width=25, height=2)
 ent_user = tk.Entry(master=frm, bg=ENT_COLOR, font=(TK_FONT, 12), width=25, )
@@ -416,7 +416,7 @@ if not SIGN_IN_FLAG:
 # ============== window send_message
 root_send_msg = tk.Tk()
 root_send_msg.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_send_msg.title('InsertDBMsgService')
+root_send_msg.title('CreateMsgService')
 notebook = ttk.Notebook(root_send_msg)
 
 frm, frm_msg_form, frm_sending, lbl, ent = {}, {}, {}, {}, {}
