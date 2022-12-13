@@ -175,9 +175,6 @@ else:
     print(help_msg)
     sys.exit()
 
-print('IS_ALL_RECS', IS_ALL_RECS)  ###
-if not IS_ALL_RECS:
-    print('CNT_RECS', CNT_RECS)  ###
 
 # === MESSENGER FUNCTIONS ===
 async def robot():
@@ -548,8 +545,6 @@ async def load_records_from_db(mode, cursor):
         return 1
     if APPMODE_CONSOLE:
         rows = rows[:CNT_RECS] if not IS_ALL_RECS and len(rows) > 0 else rows
-        logger.debug('len rows')
-        logger.debug(len(rows))
     return rows
 
 
