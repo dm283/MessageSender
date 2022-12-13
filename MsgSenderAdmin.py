@@ -4,6 +4,7 @@ from aiosmtplib import SMTP
 from aioimaplib import aioimaplib
 from cryptography.fernet import Fernet
 from tkinter import ttk
+from pathlib import Path
 
 # загрузка конфигурации
 CONFIG_FILE = 'config.ini'
@@ -242,6 +243,14 @@ async def btn_save_config_click():
         for k, v in config.items(s):
             if k not in ['section_description', 'section_label']:
                 config[s][k] = ent[s][k].get()
+    # создание папок приложений, если отсутствуют
+    print('проверка наличия папок приложений')
+    dir_email_attachments = Path(config['common']['dir_email_attachments'])
+    dir_telegram_attachments = Path(config['common']['dir_telegram_attachments'])
+    if not dir_email_attachments.exists():
+        dir_email_attachments.mkdir()
+    if not dir_telegram_attachments.exists():
+        dir_telegram_attachments.mkdir()
 
 
 # === INTERFACE FUNCTIONS ===

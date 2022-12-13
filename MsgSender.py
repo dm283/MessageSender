@@ -1,4 +1,4 @@
-import sys, os, configparser, re, datetime, asyncio, email, logging, tkinter as tk
+import sys, configparser, re, datetime, asyncio, email, logging, tkinter as tk
 import requests, aioodbc
 from aiosmtplib import SMTP
 from aioimaplib import aioimaplib

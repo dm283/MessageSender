@@ -327,6 +327,9 @@ async def btn_attached_files_path_click(mode):
         ent[mode]['attachments'].insert("1.0", '; '.join(filepath_dir_attachments) + postfix)
     # копирование выбранных файлов в папки вложений
     dst_dir = DIR_EMAIL_ATTACHMENTS if mode == 'email' else DIR_TELEGRAM_ATTACHMENTS
+    # создается папка с приложениями если не существует
+    if not dst_dir.exists():
+        dst_dir.mkdir()
     for file in filepath:
         dest = shutil.copy(file, dst_dir)
 
