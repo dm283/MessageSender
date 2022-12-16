@@ -1,8 +1,8 @@
 *.log
 *.txt
 *.json
-*.sql
 *.ini
+*.odt
 venv/
 рабочие/
 сервисные/
@@ -10,4 +10,3 @@ build/
 attachments_email/
 attachments_telegram/
 setup.py
-documentation.odt

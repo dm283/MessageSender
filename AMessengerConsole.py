@@ -44,8 +44,6 @@ try:
     CHECK_DB_PERIOD = int(config['common']['check_db_period'].split('\t#')[0])  # период проверки новых записей в базе данных
     DIR_EMAIL_ATTACHMENTS = Path(config['common']['dir_email_attachments'].split('\t#')[0])  # директория с файлами для отправки
     DIR_TELEGRAM_ATTACHMENTS = Path(config['common']['dir_telegram_attachments'].split('\t#')[0])
-    #Path('c:/Users/dm283/Documents/Tech/ALTA/MessageSender/attachments')
-    #Path().absolute() / 'attachments'
     ADMIN_EMAIL = config['admin_credentials']['email'].split('\t#')[0]  # почта админа
     BOT_NAME = config['telegram_bot']['bot_name'].split('\t#')[0]
     TELEGRAM_DB = config['telegram_bot']['db'].split('\t#')[0]  # база данных mssql/posgres
@@ -56,10 +54,7 @@ try:
     MODE_EMAIL, MODE_TELEGRAM = bool(), bool()
     SENDER_EMAIL = config['email']['sender_email'].split('\t#')[0]
     SMTP_HOST, SMTP_PORT = config['email']['smtp_host'].split('\t#')[0], config['email']['smtp_port'].split('\t#')[0]
-    TEST_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}
-    Subject: Mailsender - тестовое сообщение\n
-    Это тестовое сообщение отправленное сервисом Mailsender.""".encode('utf8')
-    UNDELIVERED_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}\nSubject: MessageSender - недоставленное сообщение\n
+    UNDELIVERED_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}\nSubject: AMessenger - недоставленное сообщение\n
     \rЭто сообщение отправленно сервисом MessageSender.\n""".encode('utf8')
     IMAP_HOST, IMAP_PORT = config['email']['imap_host'].split('\t#')[0], config['email']['imap_port'].split('\t#')[0]
     EMAIL_DB = config['email']['db'].split('\t#')[0]
@@ -670,9 +665,8 @@ if APPMODE_CONSOLE:
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('MessageSender')
+root.title('AMessenger')
 frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
-lbl_sign = tk.Label(master=frm, text='Sign in to MessageSender', bg=LBL_COLOR, font=(TK_FONT, 15), width=21, height=2)
 lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=(TK_FONT, 12), anchor='w', width=25, height=2)
 ent_user = tk.Entry(master=frm, bg=ENT_COLOR, font=(TK_FONT, 12), width=25, )
 lbl_password = tk.Label(master=frm, text='Password', bg=LBL_COLOR, font=(TK_FONT, 12), anchor='w', width=25, height=2)
@@ -711,7 +705,7 @@ if not SIGN_IN_FLAG:
 # ============== window robot
 root_robot = tk.Tk()
 root_robot.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_robot.title('MessageSender')
+root_robot.title('AMessenger')
 frm = tk.Frame(bg=THEME_COLOR, width=555, height=290)
 #lbl_robot = tk.Label(master=frm, text='MessageSender', bg=LBL_COLOR, font=("Arial", 15), width=20, height=2)
 btn_robot_run = tk.Button(master=frm, bg=BTN_START_COLOR, fg=BTN_TEXT_COLOR, text='Запуск робота', font=BTN_FONT, 

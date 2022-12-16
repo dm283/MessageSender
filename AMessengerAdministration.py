@@ -6,22 +6,37 @@ from cryptography.fernet import Fernet
 from tkinter import ttk
 from pathlib import Path
 
+
 # загрузка конфигурации
-CONFIG_FILE = 'config.ini'
-config = configparser.ConfigParser()
-config.read(CONFIG_FILE, encoding='utf-8')
+CONFIG_FILE = Path().absolute() / 'config.ini'
+if CONFIG_FILE.exists():
+    config = configparser.ConfigParser()
+    config.read(CONFIG_FILE, encoding='utf-8')
+else:
+    print('Ошибка запуска приложения:  отсутствует конфигурационный файл config.ini')
+    sys.exit()
 
 # загрузка ключа шифрования
-with open('rec-k.txt') as f:
-    rkey = f.read().encode('utf-8')
-refKey = Fernet(rkey)
+KEY_FILE = Path().absolute() / 'rec-k.txt'
+if KEY_FILE.exists():
+    with open(KEY_FILE) as f:
+        rkey = f.read().encode('utf-8')
+else:
+    print('Ошибка запуска приложения:  отсутствует ключ шифрования')
+    sys.exit()
+
+try:
+    refKey = Fernet(rkey)
+except Exception as ex:
+    print('Ошибка ключа шифрования:  ', ex)
+    sys.exit()
 
 # config {} = реальные значения; config_show {} = значения для отрисовки
 config_show = {}
 for s in config.sections():
     config_show[s] = {}
     for k, v in config.items(s):
-        config[s][k] = v.split('\t# ')[0]
+        config[s][k] = v.split('\t# ')[0].strip()
         config_show[s][k] = v.split('\t# ')
 
 # расшифровка паролей
@@ -29,14 +44,14 @@ password_section_key_list = [ ('user_credentials', 'password'), ('admin_credenti
 hashed_section_key_list = [ ('user_credentials', 'password'), ('admin_credentials', 'password'), ('email', 'server_password'), ('telegram_bot', 'bot_token')]
 for s in hashed_section_key_list:
     hashed = config[s[0]][s[1]]
-    config[s[0]][s[1]] = (refKey.decrypt(hashed).decode('utf-8')) if hashed != '' else config[s[0]][s[1]]
+    config[s[0]][s[1]] = (refKey.decrypt(hashed).decode('utf-8')) if hashed != '-' else config[s[0]][s[1]]
 
 ADMIN_BOT_CHAT_ID = str()
 
 to_str = config['admin_credentials']['email'].split('\t#')[0]
 from_str = config['email']['sender_email'].split('\t#')[0]
-TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: MessageSender - тестовое сообщение\n
-Это тестовое сообщение отправленное сервисом MessageSender.""".encode('utf8')
+TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: AMessenger - тестовое сообщение\n
+Это тестовое сообщение отправленное сервисом AMessenger.""".encode('utf8')
 
 SIGN_IN_FLAG = False
 
@@ -235,7 +250,7 @@ async def btn_save_config_click():
                 config[s][k] = config[s][k] + '\t# ' + config_show[s][k][1]
     with open(CONFIG_FILE, 'w', encoding='utf-8') as configfile:
         config.write(configfile)
-    lbl_config_msg['text'] = f'Конфигурация сохранена в файл {CONFIG_FILE}'
+    lbl_config_msg['text'] = f'Конфигурация сохранена'
     # после сохранения конфига сообщения о тестах меняются на изначальные
     lbl_msg_test['telegram_bot']['text'], lbl_msg_test['email']['text'] = '', ''
     # запись обратно в переменные config значений без комментариев
@@ -244,13 +259,19 @@ async def btn_save_config_click():
             if k not in ['section_description', 'section_label']:
                 config[s][k] = ent[s][k].get()
     # создание папок приложений, если отсутствуют
-    print('проверка наличия папок приложений')
+    dir_logs = Path(config['common']['dir_log'])
     dir_email_attachments = Path(config['common']['dir_email_attachments'])
     dir_telegram_attachments = Path(config['common']['dir_telegram_attachments'])
-    if not dir_email_attachments.exists():
-        dir_email_attachments.mkdir()
-    if not dir_telegram_attachments.exists():
-        dir_telegram_attachments.mkdir()
+    for d in [dir_logs, dir_email_attachments, dir_telegram_attachments]:
+        if not d.exists():
+            d.mkdir()       
+
+    # if not dir_logs.exists():
+    #     dir_logs.mkdir()
+    # if not dir_email_attachments.exists():
+    #     dir_email_attachments.mkdir()
+    # if not dir_telegram_attachments.exists():
+    #     dir_telegram_attachments.mkdir()
 
 
 # === INTERFACE FUNCTIONS ===
@@ -520,7 +541,7 @@ async def check_telegram_admin_exists(cnxn, cursor):
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('MessageSender administration')
+root.title('AMessengerAdministration')
 frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
 #lbl_sign = tk.Label(master=frm, text='', bg=LBL_COLOR, font=("Arial", 15), width=21, height=2)  #bg=LBL_COLOR
 lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=("Arial", 12), anchor='w', width=25, height=2)
@@ -553,7 +574,7 @@ if not SIGN_IN_FLAG:
 # ============== window admin
 root_admin = tk.Tk()
 root_admin.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_admin.title('MessageSender administration')
+root_admin.title('AMessengerAdministration')
 notebook = ttk.Notebook(root_admin)
 
 # в каждом Frame (section) создаются подфреймы с Labels и Enrty (key и key-value)
