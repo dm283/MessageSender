@@ -1,2 +1,2 @@
-# MessageSender
+# AMessenger
 Приложение для автоматизированной рассылки сообщений через Telegram и email
