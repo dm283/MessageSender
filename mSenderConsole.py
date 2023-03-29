@@ -1,5 +1,5 @@
 import sys, configparser, re, datetime, asyncio, email, logging, tkinter as tk
-import requests, aioodbc
+import requests, aioodbc, ssl
 from aiosmtplib import SMTP
 from aioimaplib import aioimaplib
 from cryptography.fernet import Fernet
@@ -9,6 +9,9 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
+
+SVH_Gujon = False
+Yandex = True
 
 # загрузка конфигурации
 
@@ -54,8 +57,8 @@ try:
     MODE_EMAIL, MODE_TELEGRAM = bool(), bool()
     SENDER_EMAIL = config['email']['sender_email'].split('\t#')[0]
     SMTP_HOST, SMTP_PORT = config['email']['smtp_host'].split('\t#')[0], config['email']['smtp_port'].split('\t#')[0]
-    UNDELIVERED_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}\nSubject: AMessenger - недоставленное сообщение\n
-    \rЭто сообщение отправленно сервисом MessageSender.\n""".encode('utf8')
+    # UNDELIVERED_MESSAGE = f"""To: {ADMIN_EMAIL}\nFrom: {SENDER_EMAIL}\nSubject: mSender - недоставленное сообщение\n
+    # \rЭто сообщение отправленно сервисом mSender.\n""".encode('utf8')
     IMAP_HOST, IMAP_PORT = config['email']['imap_host'].split('\t#')[0], config['email']['imap_port'].split('\t#')[0]
     EMAIL_DB = config['email']['db'].split('\t#')[0]
     EMAIL_DB_CONNECTION_STRING = config['email']['db_connection_string'].split('\t#')[0]
@@ -272,7 +275,7 @@ async def robot():
                 logger.debug(f'Нет новых сообщений в базе данных email {EMAIL_DB}.')
 
             #  email - недоставленные сообщения: проверка оповещений, запись в лог и отправка на почту админа
-            undelivereds = await check_undelivered_emails(IMAP_HOST, SENDER_EMAIL, EMAIL_SERVER_PASSWORD)
+            undelivereds = await check_undelivered_emails(IMAP_HOST, IMAP_PORT, SENDER_EMAIL, EMAIL_SERVER_PASSWORD)
             if undelivereds == 1:
                 err_msg = f'Ошибка проверки недоставленных сообщений'
                 if APPMODE_INTERFACE:
@@ -282,8 +285,17 @@ async def robot():
                 return 1
             if len(undelivereds) > 0:
                 try:
-                    smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True,
-                        username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+
+                    if SVH_Gujon:
+                        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+                        context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+                        smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True,
+                            tls_context=context,                # для сервера СВХ, для Yandex не нужно
+                            username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+                    elif Yandex:
+                            smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True,
+                            username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+
                     await smtp_client.connect()
                 except Exception as ex:
                     logger.error(f'Ошибка подключения к smtp-серверу при отправке email на почту администратора {ADMIN_EMAIL}:   {ex}')
@@ -297,7 +309,14 @@ async def robot():
                     if u[1] not in ERROR_EMAIL_LIST:
                         ERROR_EMAIL_LIST.append(u[1])
                     # отправка сообщения о несуществующем адресе на почту администратора
-                    msg = UNDELIVERED_MESSAGE + log_msg.encode('utf-8')
+                    message = MIMEMultipart()
+                    message['From'] = SENDER_EMAIL
+                    message['To'] = ADMIN_EMAIL
+                    message['Subject'] = 'mSender - недоставленное сообщение'
+                    message_text = 'Это сообщение отправленно сервисом mSender.\n' + log_msg
+                    message.attach(MIMEText(message_text, 'plain'))
+                    msg = message.as_string()
+
                     try:
                         await smtp_client.sendmail(SENDER_EMAIL, ADMIN_EMAIL, msg)
                     except Exception as ex:
@@ -333,22 +352,45 @@ async def stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_d
 
 async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records):
     # отправляет почту  # return status, exception
-    smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+
+    if SVH_Gujon:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+        context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+        smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, 
+                        tls_context=context,                # для сервера СВХ, для Yandex не нужно
+                        username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+    elif Yandex:
+        smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, 
+            username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+        
     try:
         await smtp_client.connect() 
     except Exception as ex:
         return 1, ex
 
     for e in email_msg_data_records:
-        # e =  (1, 'test1', 'This is the test message 1!', 'testbox283@yandex.ru; testbox283@mail.ru', 'at1.txt; at2.jpg')
+        # e =  (1, 'test1', 'This is the test message 1!', 'testbox283@yandex.ru, testbox283@mail.ru', 'at1.txt; at2.jpg')
         logger.debug(f"Новая запись в EMAIL_DB {e}")
-        addrs = e[3].strip().split(';')
+
+        if e[3]:
+            addrs = e[3].strip().split(',')
+        else:
+            logger.error(f'Ошибка отправки email сообщения: незаполненное поле адресатов [ id = {e[0]} ]')
+            continue
+
         for a in addrs:
             a = a.strip()
             if(re.fullmatch(REGEX_EMAIL_VALID, a)):
                 if a not in ERROR_EMAIL_LIST:
                     if not e[4]:   #  если нет приложенных файлов формируется простое сообщение
-                        msg = f'To: {a}\nFrom: {SENDER_EMAIL}\nSubject: {e[1]}\n\n{e[2]}'.encode("utf-8")
+                        # msg = f'To: {a}\nFrom: {SENDER_EMAIL}\nSubject: {e[1]}\n\n{e[2]}'.encode("utf-8")
+                        message = MIMEMultipart()
+                        message['From'] = SENDER_EMAIL
+                        message['To'] = a
+                        message['Subject'] = e[1]
+                        message_text = e[2]
+                        message.attach(MIMEText(message_text, 'plain'))
+                        msg = message.as_string()
                     else:   # если есть приложенные файлы формируется составное сообщение
                         message = MIMEMultipart()
                         message['From'] = SENDER_EMAIL
@@ -356,7 +398,7 @@ async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_re
                         message['Subject'] = e[1]
                         message_text = e[2]
                         message.attach(MIMEText(message_text, 'plain'))
-                        files = e[4].strip().split(';')
+                        files = e[4].strip().split(',')
                         for f in files:  # add files to the message
                             f = f.strip()
                             file_path = DIR_EMAIL_ATTACHMENTS / f
@@ -377,7 +419,7 @@ async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_re
                     except Exception as ex:
                         logger.error(f'Ошибка отправки email сообщения на адрес {a} id={e[0]}:   {ex}')
                 else:
-                    logger.error(f'Ошибка отправки email сообщения: адрес {a} в error-list')
+                    logger.error(f'Aдрес {a} в error-list  -  сообщение не будет отправлено')
             else:
                 logger.error(f'Ошибка отправки email сообщения: некорректный email адрес {a} в {EMAIL_DB_TABLE_EMAILS} с id={e[0]}')
         status, ex = await set_record_handling_time_in_email_db(cnxn_email_db, cursor_email_db, id=e[0])
@@ -388,15 +430,35 @@ async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_re
     return 0, ''
 
 
-async def check_undelivered_emails(host, user, password):
+async def check_undelivered_emails(host, port, user, password):
     # проверяет неотправленные сообщения, написано для imap@yandex, для других серверов может потребоваться корректировка функции
     try:
-        imap_client = aioimaplib.IMAP4_SSL(host=host)
+
+        if SVH_Gujon:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+            context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+            imap_client = aioimaplib.IMAP4_SSL(
+                host=host, 
+                port=port, 
+                ssl_context=context                         # для сервера СВХ, для Yandex не нужно
+                )
+        elif Yandex:
+            imap_client = aioimaplib.IMAP4_SSL(
+                host=host, 
+                port=port, 
+                )
+
         await imap_client.wait_hello_from_server()
         await imap_client.login(user, password)
         await imap_client.select('INBOX')
         typ, msg_nums_unseen = await imap_client.search('UNSEEN')
-        typ, msg_nums_from_subject = await imap_client.search('(FROM "mailer-daemon@yandex.ru" SUBJECT "Недоставленное сообщение")')
+
+        if SVH_Gujon:
+            typ, msg_nums_from_subject = await imap_client.search('(FROM "postmaster@mail.gujon.ru")')  # для сервера СВХ
+        elif Yandex:
+            typ, msg_nums_from_subject = await imap_client.search('(FROM "mailer-daemon@yandex.ru" SUBJECT "Недоставленное сообщение")') # для Yandex
+        
+        
         msg_nums_unseen = set(msg_nums_unseen[0].decode().split())
         msg_nums_from_subject = set(msg_nums_from_subject[0].decode().split())
         msg_nums = ' '.join(list(msg_nums_unseen & msg_nums_from_subject))
@@ -411,12 +473,26 @@ async def check_undelivered_emails(host, user, password):
         typ, data = await imap_client.fetch(msg_nums, '(UID BODY[TEXT])')
         undelivered = []
         for m in range(1, len(data), 3):
-            msg = email.message_from_bytes(data[m])
-            msg = msg.get_payload()
-            msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
-            msg_recipient = re.search(r'(?<=Original-Recipient: rfc822;).*', msg)[0].strip()
+
+            # для СВХ
+            if SVH_Gujon:
+                msg = data[m].decode('utf-8')
+                if 'Сервер не смог доставить сообщение электронной почты' in msg:
+                    msg_recipient = re.search(r'(?<=Original-Recipient: ).*', msg)[0].strip()
+                    msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
+                    # logger.debug(msg_arrival_date + msg_recipient)
+                    # undelivered.append((msg_arrival_date, msg_recipient))
+
+            # для Yandex
+            elif Yandex:
+                msg = email.message_from_bytes(data[m])
+                msg = msg.get_payload()
+                msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
+                msg_recipient = re.search(r'(?<=Original-Recipient: rfc822;).*', msg)[0].strip()
+
             logger.debug(msg_arrival_date + msg_recipient)
             undelivered.append((msg_arrival_date, msg_recipient))
+            
         await imap_client.close()
         await imap_client.logout()
         return undelivered
@@ -433,8 +509,8 @@ async def robot_send_telegram_msg(cnxn_telegram_db, cursor_telegram_db, msg_data
         logger.debug(f"Новая запись в TELEGRAM_DB: {record}")
         record_id = record[0]
         record_msg = record[1]
-        record_addresses = record[2].strip().split(';')
-        record_attachments = record[3].strip().split(';') if record[3] else None
+        record_addresses = record[2].strip().split(',')
+        record_attachments = record[3].strip().split(',') if record[3] else None
 
         for address in record_addresses:
             address = address.strip()
@@ -545,7 +621,7 @@ async def load_records_from_db(mode, cursor):
 
 async def set_record_handling_time_in_email_db(cnxn_email_db, cursor_email_db, id):
     # пишет в базу EMAIL_DB дату/время отправки сообщения
-    dt_string = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    dt_string = str(datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
     query = f"update {EMAIL_DB_TABLE_EMAILS} set dates = '{dt_string}' where UniqueIndexField = {id}"
     try:
         await cursor_email_db.execute(query)
@@ -557,7 +633,7 @@ async def set_record_handling_time_in_email_db(cnxn_email_db, cursor_email_db, i
 
 async def set_record_handling_time_in_telegram_db(cnxn_telegram_db, cursor_telegram_db, id):
     # пишет в базу TELEGRAM_DB дату/время отправки сообщения
-    dt_string = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    dt_string = str(datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
     query = f"update {TELEGRAM_DB_TABLE_MESSAGES} set dates = '{dt_string}' where UniqueIndexField = {id}"
     try:
         await cursor_telegram_db.execute(query)
@@ -665,7 +741,7 @@ if APPMODE_CONSOLE:
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('AMessenger')
+root.title('mSender')
 frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
 lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=(TK_FONT, 12), anchor='w', width=25, height=2)
 ent_user = tk.Entry(master=frm, bg=ENT_COLOR, font=(TK_FONT, 12), width=25, )
@@ -705,9 +781,8 @@ if not SIGN_IN_FLAG:
 # ============== window robot
 root_robot = tk.Tk()
 root_robot.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_robot.title('AMessenger')
+root_robot.title('mSender')
 frm = tk.Frame(bg=THEME_COLOR, width=555, height=290)
-#lbl_robot = tk.Label(master=frm, text='MessageSender', bg=LBL_COLOR, font=("Arial", 15), width=20, height=2)
 btn_robot_run = tk.Button(master=frm, bg=BTN_START_COLOR, fg=BTN_TEXT_COLOR, text='Запуск робота', font=BTN_FONT, 
                     width=22, height=1, command=lambda: loop_robot.create_task(btn_robot_run_click()))
 btn_robot_stop = tk.Button(master=frm, bg=BTN_STOP_COLOR, fg=BTN_TEXT_COLOR, text='Остановка робота', font=BTN_FONT, 

@@ -83,7 +83,7 @@ async def btn_email_insert_db_click():
         return 1
 
     # Проверка корректности e-mail адресов
-    addrs = adrto.split(';')
+    addrs = adrto.split(',')
     for a in addrs:
         a = a.strip()
         if not (re.fullmatch(REGEX_EMAIL_VALID, a)):
@@ -100,7 +100,7 @@ async def btn_email_insert_db_click():
     lbl_msg_send['email']['text'] = f'Запись в базу данных .....'
     await asyncio.sleep(0.5)
 
-    datep = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    datep = str(datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
     query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, attachmentfiles, datep) values
                 ('{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
     try:
@@ -137,7 +137,7 @@ async def btn_telegram_insert_db_click():
     lbl_msg_send['telegram']['text'] = f'Запись в базу данных .....'
     await asyncio.sleep(0.5)
 
-    datep = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    datep = str(datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
     query = f""" insert into {TELEGRAM_DB_TABLE_MESSAGES} (msg_text, adrto, attachmentfiles, datep) values
                 ('{msg_text}', '{adrto}', '{attachments}', '{datep}') """
     try:
@@ -249,7 +249,7 @@ async def fill_msg_table(mode, labels_list, labels_list_check_len, records_from_
             elif l == 'msg_text' and len(text_str) > 57:
                 text_str = text_str[:57] + ' ...'
             elif l == 'attachments' and text_str:
-                cnt_files = len(text_str.split(';'))
+                cnt_files = len(text_str.split(','))
                 if cnt_files > 1:
                     text_str = f'{cnt_files} файлов'
                 if cnt_files == 1 and len(text_str) > 19:
@@ -323,8 +323,8 @@ async def btn_attached_files_path_click(mode):
     filepath = filedialog.askopenfilenames()
     if filepath != "":
         filepath_dir_attachments = list(map(lambda x: x.split('/')[-1], list(filepath)))
-        postfix = '; ' if ent[mode]['attachments'].get(1.0, "end-1c").strip() else ''
-        ent[mode]['attachments'].insert("1.0", '; '.join(filepath_dir_attachments) + postfix)
+        postfix = ', ' if ent[mode]['attachments'].get(1.0, "end-1c").strip() else ''
+        ent[mode]['attachments'].insert("1.0", ', '.join(filepath_dir_attachments) + postfix)
     # копирование выбранных файлов в папки вложений
     dst_dir = DIR_EMAIL_ATTACHMENTS if mode == 'email' else DIR_TELEGRAM_ATTACHMENTS
     # создается папка с приложениями если не существует
@@ -443,7 +443,7 @@ frm_msg_form['email'], lbl['email'], ent['email'] = tk.Frame(frm['email'], bg=TH
 lbl['email']['description'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR, text='Запись в базу данных e-mail сообщений', 
                                         font=('Segoe UI', 10, 'bold'))
 lbl['email']['to'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
-            text = 'Адреса (через ;):', width=lbl_form_width, anchor='w', )
+            text = 'Адреса (через ,):', width=lbl_form_width, anchor='w', )
 ent['email']['to'] = tk.Entry(frm_msg_form['email'], width=ent_form_width, highlightthickness=1, highlightcolor = "Gainsboro", )
 lbl['email']['subj'] = tk.Label(frm_msg_form['email'], bg=THEME_COLOR,
             text = 'Тема:', width=lbl_form_width, anchor='w', )

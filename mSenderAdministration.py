@@ -1,11 +1,15 @@
 import sys, configparser, asyncio, tkinter as tk
-import requests, aioodbc
+import requests, aioodbc, ssl
 from aiosmtplib import SMTP
 from aioimaplib import aioimaplib
 from cryptography.fernet import Fernet
 from tkinter import ttk
 from pathlib import Path
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
+SVH_Gujon = False
+Yandex = True
 
 # загрузка конфигурации
 CONFIG_FILE = Path().absolute() / 'config.ini'
@@ -50,8 +54,16 @@ ADMIN_BOT_CHAT_ID = str()
 
 to_str = config['admin_credentials']['email'].split('\t#')[0]
 from_str = config['email']['sender_email'].split('\t#')[0]
-TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: AMessenger - тестовое сообщение\n
-Это тестовое сообщение отправленное сервисом AMessenger.""".encode('utf8')
+
+message = MIMEMultipart()
+message['From'] = from_str
+message['To'] = to_str
+message['Subject'] = 'mSender - тестовое сообщение'
+message_text = 'Это тестовое сообщение отправленно сервисом mSender.'
+message.attach(MIMEText(message_text, 'plain'))
+TEST_MESSAGE = message.as_string()
+# TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: mSender - тестовое сообщение\n
+# Это тестовое сообщение отправленное сервисом mSender.""".encode('utf8')
 
 SIGN_IN_FLAG = False
 
@@ -135,6 +147,7 @@ async def test_db_connect(label, db, connection_string, tables):
     lbl_msg_test[label]['text'] = f"Подключение к базе данных {db} ....."
     await asyncio.sleep(1)
     try:
+        print('testing db')   ######
         cnxn = await aioodbc.connect(dsn=connection_string, loop=loop_admin)
         cursor = await cnxn.cursor()
         lbl_msg_test[label]['text'] = f"Подключение к базе данных {db} - OK"
@@ -147,8 +160,10 @@ async def test_db_connect(label, db, connection_string, tables):
                 await cursor.fetchall()
                 if table == tables[-1]:
                     lbl_msg_test[label]['text'] = f"Обращение к таблицам базы данных - OK"
-            except:
+            except Exception as ex:
+                print(ex)  ######
                 lbl_msg_test[label]['text'] = f"Обращение к таблице {table.split('.')[-1]} - ошибка"
+                print(f"Обращение к таблице {table.split('.')[-1]} - ошибка", ex)
                 await cursor.close()
                 await cnxn.close()
                 await asyncio.sleep(1)
@@ -185,11 +200,22 @@ async def test_smtp_server(host, port, sender, pwd, receiver):
     # тестирует подключение к smtp-серверу: доступность smtp-сервера и отправка тестового сообщения
     lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} ....."
     try:
-        smtp_client = SMTP(hostname=host, 
-                    port=port, 
-                    use_tls=True, 
-                    username=sender, 
-                    password=pwd)
+        if SVH_Gujon:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+            context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+            smtp_client = SMTP(hostname=host, 
+                        port=port, 
+                        use_tls=True, 
+                        tls_context=context,                # для сервера СВХ, для Yandex не нужно
+                        username=sender, 
+                        password=pwd)
+        elif Yandex:
+            smtp_client = SMTP(hostname=host, 
+                        port=port, 
+                        use_tls=True, 
+                        username=sender, 
+                        password=pwd)           
+
         await smtp_client.connect()
         lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} - OK"
         await asyncio.sleep(1)
@@ -200,17 +226,37 @@ async def test_smtp_server(host, port, sender, pwd, receiver):
             await asyncio.sleep(1)
             await smtp_client.quit()
             lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
-        except:
+        except Exception as ex:
             lbl_msg_test['email']['text'] = f'Отправка сообщения {receiver} - ошибка'
-    except:
+            print(f'Отправка сообщения {receiver} - ошибка', ex)   #######
+            await asyncio.sleep(1)
+            return 1
+    except Exception as ex:
         lbl_msg_test['email']['text'] = f"Подключение к {host}:{port} - ошибка"
+        print(f'Подключение к {host}:{port} - ошибка', ex)   ###########
+        await asyncio.sleep(1)
+        return 1
 
 
 async def test_imap_server(host, port, sender, pwd):
     # тестирует подключение к imap-сервер
     lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} ....."
     try:
-        imap_client = aioimaplib.IMAP4_SSL(host=host)  # не ловиться исключение здесь!
+
+        if SVH_Gujon:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+            context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+            imap_client = aioimaplib.IMAP4_SSL(
+                host=host, 
+                port=port, 
+                ssl_context=context                         # для сервера СВХ, для Yandex не нужно
+                )  # не ловиться исключение здесь!
+        elif Yandex:
+            imap_client = aioimaplib.IMAP4_SSL(
+                host=host, 
+                port=port, 
+                )  # не ловиться исключение здесь!           
+
         await imap_client.wait_hello_from_server()
         lbl_msg_test['email']['text'] = f"Подключение к {host}: {port}  -  OK"
         await asyncio.sleep(1)
@@ -222,11 +268,16 @@ async def test_imap_server(host, port, sender, pwd):
             await imap_client.close()
             await imap_client.logout()
             lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
-        except:
-                lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  ошибка'
-    except:
+        except Exception as ex:
+            lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  ошибка'
+            print(f'Чтение входящих сообщений  -  ошибка', ex)  #############
+            await asyncio.sleep(1)
+            return 1
+    except Exception as ex:
         lbl_msg_test['email']['text'] = f"Подключение к {host}:{port}  -  ошибка"
-
+        print(f"Подключение к {host}:{port}  -  ошибка", ex)  ########
+        await asyncio.sleep(1)
+        return 1
 
 # === SAVE CONFIG FUNCTION ===
 async def btn_save_config_click():
@@ -541,7 +592,7 @@ async def check_telegram_admin_exists(cnxn, cursor):
 # ============== window sign in
 root = tk.Tk()
 root.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root.title('AMessengerAdministration')
+root.title('mSenderAdministration')
 frm = tk.Frame(bg=THEME_COLOR, width=400, height=400)
 #lbl_sign = tk.Label(master=frm, text='', bg=LBL_COLOR, font=("Arial", 15), width=21, height=2)  #bg=LBL_COLOR
 lbl_user = tk.Label(master=frm, text='Username', bg=LBL_COLOR, font=("Arial", 12), anchor='w', width=25, height=2)
@@ -574,7 +625,7 @@ if not SIGN_IN_FLAG:
 # ============== window admin
 root_admin = tk.Tk()
 root_admin.resizable(0, 0)  # делает неактивной кнопку Развернуть
-root_admin.title('AMessengerAdministration')
+root_admin.title('mSenderAdministration')
 notebook = ttk.Notebook(root_admin)
 
 # в каждом Frame (section) создаются подфреймы с Labels и Enrty (key и key-value)
