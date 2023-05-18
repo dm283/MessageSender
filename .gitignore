@@ -1,12 +1,11 @@
 *.log
-*.txt
 *.json
-*.odt
 venv/
 рабочие/
 сервисные/
 документация/
 build/
 email_files/
+logs/
 telegram_files/
 config.ini
