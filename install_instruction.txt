@@ -1,0 +1,11 @@
+1. git clone https://github.com/dm283/mSender.git
+2. python -m venv venv
+3. venv/Scripts/activate
+4. pip install -r requirements.txt
+5. copy config_init.ini and rename copied file to config.ini
+6. python mSenderAdministration.py  (admin/admin135)  -  set the settings, save, test
+7. python mSenderCreateMsg  -  try to create message
+8. python mSender  -  check if email msg is sending
+9. if all work well  -  python setup.py build (to build exe files, in setup.py set 'base=base' for 'mAdin')
+10. copy from folder 'build\exe.....'  -  lib folder, *.exe, python3, python310 - to nSender folder
+11. delete 'build' & 'venv' folders, *.py, config_init, db_crete*

@@ -16,6 +16,6 @@ setup(
  executables = [
     Executable('mSender.py', base=base), 
     Executable('mSenderConsole.py'),  #  base=base не указывается, при запуске не появляется окно cmd
-    Executable('mSenderAdministration.py'), 
+    Executable('mSenderAdministration.py', base=base), 
     Executable('mSenderCreateMsg.py', base=base)]
 )

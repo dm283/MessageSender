@@ -103,11 +103,14 @@ async def btn_email_insert_db_click():
     datep = str(datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
     query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, attachmentfiles, datep) values
                 ('{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
+    
+    print(query)
     try:
         await cursor.execute(query)
         await cnxn.commit()
         lbl_msg_send['email']['text'] = f'Записано в базу данных.'
-    except:
+    except Exception as e:
+        print('ОШИБКА = ', e)
         lbl_msg_send['email']['text'] = f"Ошибка записи в базу данных {EMAIL_DB} -  ошибка."
         await cursor.close()
         await cnxn.close()
