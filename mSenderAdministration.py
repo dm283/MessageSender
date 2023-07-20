@@ -11,7 +11,8 @@ from email.mime.text import MIMEText
 # SVH_Gujon = False
 # Yandex = True
 smtp_server = 'Yandex'  # 'SVH_Gujon' / 'Yandex' / 'PPP'
-inbox_server = 'PPP'    # 'SVH_Gujon' / 'Yandex' / 'PPP'
+inbox_server = 'Yandex'    # 'SVH_Gujon' / 'Yandex' / 'PPP'
+# smtp.yandex.ru/465 - pop.yandex.com/995 - imap.yandex.ru/993
 
 # загрузка конфигурации
 CONFIG_FILE = Path().absolute() / 'config.ini'
