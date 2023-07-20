@@ -8,8 +8,10 @@ from pathlib import Path
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-SVH_Gujon = False
-Yandex = True
+# SVH_Gujon = False
+# Yandex = True
+smtp_server = 'Yandex'  # 'SVH_Gujon' / 'Yandex' / 'PPP'
+inbox_server = 'PPP'    # 'SVH_Gujon' / 'Yandex' / 'PPP'
 
 # загрузка конфигурации
 CONFIG_FILE = Path().absolute() / 'config.ini'
@@ -200,21 +202,33 @@ async def test_smtp_server(host, port, sender, pwd, receiver):
     # тестирует подключение к smtp-серверу: доступность smtp-сервера и отправка тестового сообщения
     lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} ....."
     try:
-        if SVH_Gujon:
-            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
-            context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+        if smtp_server == 'SVH_Gujon':
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+            context.set_ciphers('DEFAULT@SECLEVEL=1')
             smtp_client = SMTP(hostname=host, 
                         port=port, 
                         use_tls=True, 
-                        tls_context=context,                # для сервера СВХ, для Yandex не нужно
+                        tls_context=context,
                         username=sender, 
                         password=pwd)
-        elif Yandex:
+        elif smtp_server == 'Yandex':
+            context = ssl.SSLContext()
             smtp_client = SMTP(hostname=host, 
                         port=port, 
-                        use_tls=True, 
+                        use_tls=True,
+                        tls_context=context,
                         username=sender, 
-                        password=pwd)           
+                        password=pwd)
+        elif smtp_server == 'PPP':
+            context = ssl.SSLContext()
+            smtp_client = SMTP(hostname=host, 
+                               port=port, 
+                               username=sender, 
+                               password=pwd, 
+                               use_tls=False,
+                               start_tls=True,
+                               tls_context=context,
+                            )   
 
         await smtp_client.connect()
         lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} - OK"
@@ -243,36 +257,66 @@ async def test_imap_server(host, port, sender, pwd):
     lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} ....."
     try:
 
-        if SVH_Gujon:
-            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
-            context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+        if inbox_server == 'SVH_Gujon':
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+            context.set_ciphers('DEFAULT@SECLEVEL=1')
             imap_client = aioimaplib.IMAP4_SSL(
                 host=host, 
                 port=port, 
-                ssl_context=context                         # для сервера СВХ, для Yandex не нужно
+                ssl_context=context,
                 )  # не ловиться исключение здесь!
-        elif Yandex:
+        elif inbox_server == 'Yandex':
+            context = ssl.SSLContext()
             imap_client = aioimaplib.IMAP4_SSL(
                 host=host, 
                 port=port, 
-                )  # не ловиться исключение здесь!           
+                ssl_context=context,
+                )  # не ловиться исключение здесь!     
+        elif inbox_server == 'PPP':
+            import poplib
+            context = ssl.SSLContext()
+            server = poplib.POP3_SSL(
+                host=host, 
+                port=port,
+                context=context,
+                )      
 
-        await imap_client.wait_hello_from_server()
-        lbl_msg_test['email']['text'] = f"Подключение к {host}: {port}  -  OK"
-        await asyncio.sleep(1)
-        try:
-            await imap_client.login(sender, pwd)
-            await imap_client.select('INBOX')
-            lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  OK'
+
+        if inbox_server in ['SVH_Gujon', 'Yandex']:
+            await imap_client.wait_hello_from_server()
+            lbl_msg_test['email']['text'] = f"Подключение к {host}: {port}  -  OK"
             await asyncio.sleep(1)
-            await imap_client.close()
-            await imap_client.logout()
-            lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
-        except Exception as ex:
-            lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  ошибка'
-            print(f'Чтение входящих сообщений  -  ошибка', ex)  #############
+            try:
+                await imap_client.login(sender, pwd)
+                await imap_client.select('INBOX')
+                lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  OK'
+                await asyncio.sleep(1)
+                await imap_client.close()
+                await imap_client.logout()
+                lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
+            except Exception as ex:
+                lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  ошибка'
+                print(f'Чтение входящих сообщений  -  ошибка', ex)  #############
+                await asyncio.sleep(1)
+                return 1
+            
+        elif inbox_server == 'PPP':
+            lbl_msg_test['email']['text'] = f"Подключение к {host}: {port}  -  OK"
             await asyncio.sleep(1)
-            return 1
+            try:
+                server.user(sender)
+                server.pass_(pwd)
+                resp, items, octets = server.list()
+                lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  OK'
+                await asyncio.sleep(1)
+                server.quit()
+                lbl_msg_test['email']['text'] = 'Тестирование успешно завершено'
+            except Exception as ex:
+                lbl_msg_test['email']['text'] = f'Чтение входящих сообщений  -  ошибка'
+                print(f'Чтение входящих сообщений  -  ошибка', ex)  #############
+                await asyncio.sleep(1)
+                return 1    
+
     except Exception as ex:
         lbl_msg_test['email']['text'] = f"Подключение к {host}:{port}  -  ошибка"
         print(f"Подключение к {host}:{port}  -  ошибка", ex)  ########
