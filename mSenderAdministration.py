@@ -55,18 +55,22 @@ for s in hashed_section_key_list:
 
 ADMIN_BOT_CHAT_ID = str()
 
-to_str = config['admin_credentials']['email'].split('\t#')[0]
-from_str = config['email']['sender_email'].split('\t#')[0]
+def create_test_message():
+    #  формирование тестового сообщения - оно переформируется каждый раз при сохранении конфига
+    to_str = config['admin_credentials']['email'].split('\t#')[0]
+    from_str = config['email']['sender_email'].split('\t#')[0]
+    message = MIMEMultipart()
+    message['From'] = from_str
+    message['To'] = to_str
+    message['Subject'] = 'mSender - тестовое сообщение'
+    message_text = 'Это тестовое сообщение отправленно сервисом mSender.'
+    message.attach(MIMEText(message_text, 'plain'))
+    TEST_MESSAGE = message.as_string()
+    # TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: mSender - тестовое сообщение\n
+    # Это тестовое сообщение отправленное сервисом mSender.""".encode('utf8')
+    return TEST_MESSAGE
 
-message = MIMEMultipart()
-message['From'] = from_str
-message['To'] = to_str
-message['Subject'] = 'mSender - тестовое сообщение'
-message_text = 'Это тестовое сообщение отправленно сервисом mSender.'
-message.attach(MIMEText(message_text, 'plain'))
-TEST_MESSAGE = message.as_string()
-# TEST_MESSAGE = f"""To: {to_str}\nFrom: {from_str}\nSubject: mSender - тестовое сообщение\n
-# Это тестовое сообщение отправленное сервисом mSender.""".encode('utf8')
+TEST_MESSAGE = create_test_message()
 
 SIGN_IN_FLAG = False
 
@@ -326,7 +330,7 @@ async def test_imap_server(host, port, sender, pwd):
 
 # === SAVE CONFIG FUNCTION ===
 async def btn_save_config_click():
-    global config
+    global config, TEST_MESSAGE
     # сохраняет установленные значения конфига
     for s in config.sections():
         for k, v in config.items(s):
@@ -354,6 +358,8 @@ async def btn_save_config_click():
         for k, v in config.items(s):
             if k not in ['section_description', 'section_label']:
                 config[s][k] = ent[s][k].get()
+    # воссоздание тестового сообщения - с новыми sender-receiver
+    TEST_MESSAGE = create_test_message()
     # создание папок приложений, если отсутствуют
     dir_logs = Path(config['common']['dir_log'])
     dir_email_attachments = Path(config['common']['dir_email_attachments'])
