@@ -13,3 +13,5 @@
 9. if all work well  -  python setup.py build (to build exe files, in setup.py set 'base=base' for 'mAdin')
 10. copy from folder 'build\exe.....'  -  lib folder, *.exe, python3, python310 - to nSender folder
 11. delete 'build' & 'venv' folders, *.py, config_init, db_crete*
+
+
