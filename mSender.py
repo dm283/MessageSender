@@ -10,8 +10,10 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 
-SVH_Gujon = False
-Yandex = True
+# SVH_Gujon = False
+# Yandex = True
+smtp_server = 'Yandex'  # 'SVH_Gujon' / 'Yandex' / 'PPP'
+inbox_server = 'Yandex'    # 'SVH_Gujon' / 'Yandex' / 'PPP'
 
 # загрузка конфигурации
 
@@ -285,16 +287,43 @@ async def robot():
                 return 1
             if len(undelivereds) > 0:
                 try:
+                    if smtp_server == 'SVH_Gujon':
+                        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+                        context.set_ciphers('DEFAULT@SECLEVEL=1')
+                        smtp_client = SMTP(hostname=SMTP_HOST, 
+                                    port=SMTP_PORT, 
+                                    use_tls=True, 
+                                    tls_context=context,
+                                    username=SENDER_EMAIL, 
+                                    password=EMAIL_SERVER_PASSWORD)
+                    elif smtp_server == 'Yandex':
+                        context = ssl.SSLContext()
+                        smtp_client = SMTP(hostname=SMTP_HOST, 
+                                    port=SMTP_PORT, 
+                                    use_tls=True,
+                                    tls_context=context,
+                                    username=SENDER_EMAIL, 
+                                    password=EMAIL_SERVER_PASSWORD)
+                    elif smtp_server == 'PPP':
+                        context = ssl.SSLContext()
+                        smtp_client = SMTP(hostname=SMTP_HOST, 
+                                        port=SMTP_PORT, 
+                                        username=SENDER_EMAIL, 
+                                        password=EMAIL_SERVER_PASSWORD, 
+                                        use_tls=False,
+                                        start_tls=True,
+                                        tls_context=context,
+                                        )   
 
-                    if SVH_Gujon:
-                        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
-                        context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
-                        smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True,
-                            tls_context=context,                # для сервера СВХ, для Yandex не нужно
-                            username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
-                    elif Yandex:
-                            smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True,
-                            username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+                    # if SVH_Gujon:
+                    #     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+                    #     context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+                    #     smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True,
+                    #         tls_context=context,                # для сервера СВХ, для Yandex не нужно
+                    #         username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+                    # elif Yandex:
+                    #         smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True,
+                    #         username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
 
                     await smtp_client.connect()
                 except Exception as ex:
@@ -352,18 +381,46 @@ async def stop_close_db_con(cursor_telegram_db, cnxn_telegram_db, cursor_email_d
 
 async def robot_send_email_msg(cnxn_email_db, cursor_email_db, email_msg_data_records):
     # отправляет почту  # return status, exception
-
-    if SVH_Gujon:
-        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
-        context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
-        smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, 
-                        tls_context=context,                # для сервера СВХ, для Yandex не нужно
-                        username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
-    elif Yandex:
-        smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, 
-            username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
-        
     try:
+        if smtp_server == 'SVH_Gujon':
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+            context.set_ciphers('DEFAULT@SECLEVEL=1')
+            smtp_client = SMTP(hostname=SMTP_HOST, 
+                        port=SMTP_PORT, 
+                        use_tls=True, 
+                        tls_context=context,
+                        username=SENDER_EMAIL, 
+                        password=EMAIL_SERVER_PASSWORD)
+        elif smtp_server == 'Yandex':
+            context = ssl.SSLContext()
+            smtp_client = SMTP(hostname=SMTP_HOST, 
+                        port=SMTP_PORT, 
+                        use_tls=True,
+                        tls_context=context,
+                        username=SENDER_EMAIL, 
+                        password=EMAIL_SERVER_PASSWORD)
+        elif smtp_server == 'PPP':
+            context = ssl.SSLContext()
+            smtp_client = SMTP(hostname=SMTP_HOST, 
+                               port=SMTP_PORT, 
+                               username=SENDER_EMAIL, 
+                               password=EMAIL_SERVER_PASSWORD, 
+                               use_tls=False,
+                               start_tls=True,
+                               tls_context=context,
+                            )   
+
+    # if SVH_Gujon:
+    #     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+    #     context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+    #     smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, 
+    #                     tls_context=context,                # для сервера СВХ, для Yandex не нужно
+    #                     username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+    # elif Yandex:
+    #     smtp_client = SMTP(hostname=SMTP_HOST, port=SMTP_PORT, use_tls=True, 
+    #         username=SENDER_EMAIL, password=EMAIL_SERVER_PASSWORD)
+        
+
         await smtp_client.connect() 
     except Exception as ex:
         return 1, ex
@@ -434,68 +491,103 @@ async def check_undelivered_emails(host, port, user, password):
     # проверяет неотправленные сообщения, написано для imap@yandex, для других серверов может потребоваться корректировка функции
     try:
 
-        if SVH_Gujon:
-            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
-            context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+        if inbox_server == 'SVH_Gujon':
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+            context.set_ciphers('DEFAULT@SECLEVEL=1')
             imap_client = aioimaplib.IMAP4_SSL(
                 host=host, 
                 port=port, 
-                ssl_context=context                         # для сервера СВХ, для Yandex не нужно
-                )
-        elif Yandex:
+                ssl_context=context,
+                )  # не ловиться исключение здесь!
+        elif inbox_server == 'Yandex':
+            context = ssl.SSLContext()
             imap_client = aioimaplib.IMAP4_SSL(
                 host=host, 
                 port=port, 
-                )
+                ssl_context=context,
+                )  # не ловиться исключение здесь!     
+        elif inbox_server == 'PPP':
+            import poplib
+            context = ssl.SSLContext()
+            pop3_client = poplib.POP3_SSL(
+                host=host, 
+                port=port,
+                context=context,
+                )      
 
-        await imap_client.wait_hello_from_server()
-        await imap_client.login(user, password)
-        await imap_client.select('INBOX')
-        typ, msg_nums_unseen = await imap_client.search('UNSEEN')
+        # if SVH_Gujon:
+        #     context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)  # для сервера СВХ, для Yandex не нужно
+        #     context.set_ciphers('DEFAULT@SECLEVEL=1')       # для сервера СВХ, для Yandex не нужно
+        #     imap_client = aioimaplib.IMAP4_SSL(
+        #         host=host, 
+        #         port=port, 
+        #         ssl_context=context                         # для сервера СВХ, для Yandex не нужно
+        #         )
+        # elif Yandex:
+        #     imap_client = aioimaplib.IMAP4_SSL(
+        #         host=host, 
+        #         port=port, 
+        #         )
 
-        if SVH_Gujon:
-            typ, msg_nums_from_subject = await imap_client.search('(FROM "postmaster@mail.gujon.ru")')  # для сервера СВХ
-        elif Yandex:
-            typ, msg_nums_from_subject = await imap_client.search('(FROM "mailer-daemon@yandex.ru" SUBJECT "Недоставленное сообщение")') # для Yandex
-        
-        
-        msg_nums_unseen = set(msg_nums_unseen[0].decode().split())
-        msg_nums_from_subject = set(msg_nums_from_subject[0].decode().split())
-        msg_nums = ' '.join(list(msg_nums_unseen & msg_nums_from_subject))
-        l = len(msg_nums.split())
-        if l == 0:
-            logger.debug('Нет новых сообщений о недоставленной почте')
+        if inbox_server in ['SVH_Gujon', 'Yandex']:
+            await imap_client.wait_hello_from_server()
+            await imap_client.login(user, password)
+            await imap_client.select('INBOX')
+            typ, msg_nums_unseen = await imap_client.search('UNSEEN')
+
+            if inbox_server == 'SVH_Gujon':
+                typ, msg_nums_from_subject = await imap_client.search('(FROM "postmaster@mail.gujon.ru")')  # для сервера СВХ
+            elif inbox_server == 'Yandex':
+                typ, msg_nums_from_subject = await imap_client.search('(FROM "mailer-daemon@yandex.ru" SUBJECT "Недоставленное сообщение")') # для Yandex
+            
+            
+            msg_nums_unseen = set(msg_nums_unseen[0].decode().split())
+            msg_nums_from_subject = set(msg_nums_from_subject[0].decode().split())
+            msg_nums = ' '.join(list(msg_nums_unseen & msg_nums_from_subject))
+            l = len(msg_nums.split())
+            if l == 0:
+                logger.debug('Нет новых сообщений о недоставленной почте')
+                await imap_client.close()
+                await imap_client.logout()
+                return []
+            logger.debug(f'Получено {l} оповещений о недоставленной почте')
+            msg_nums = msg_nums.replace(' ', ',')
+            typ, data = await imap_client.fetch(msg_nums, '(UID BODY[TEXT])')
+            undelivered = []
+            for m in range(1, len(data), 3):
+
+                # для СВХ
+                if inbox_server == 'SVH_Gujon':
+                    msg = data[m].decode('utf-8')
+                    if 'Сервер не смог доставить сообщение электронной почты' in msg:
+                        msg_recipient = re.search(r'(?<=Original-Recipient: ).*', msg)[0].strip()
+                        msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
+                        # logger.debug(msg_arrival_date + msg_recipient)
+                        # undelivered.append((msg_arrival_date, msg_recipient))
+
+                # для Yandex
+                elif inbox_server == 'Yandex':
+                    msg = email.message_from_bytes(data[m])
+                    msg = msg.get_payload()
+                    msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
+                    msg_recipient = re.search(r'(?<=Original-Recipient: rfc822;).*', msg)[0].strip()
+
+                logger.debug(msg_arrival_date + msg_recipient)
+                undelivered.append((msg_arrival_date, msg_recipient))
+                
             await imap_client.close()
             await imap_client.logout()
+            return undelivered
+        
+        elif inbox_server == 'PPP':
+            # ДОРАБОТАТЬ ЭТУ ФУНКЦИЮ! ДЛЯ YANDEX СТРУКТУРА ПИСЬМА У IMAP И POP3 ОДИНАКОВАЯ!
+            pop3_client.user(user)
+            pop3_client.pass_(password)
+            resp, items, octets = pop3_client.list()
+            logger.debug('POP3 - Условно Нет новых сообщений о недоставленной почте') #
+            pop3_client.quit()
             return []
-        logger.debug(f'Получено {l} оповещений о недоставленной почте')
-        msg_nums = msg_nums.replace(' ', ',')
-        typ, data = await imap_client.fetch(msg_nums, '(UID BODY[TEXT])')
-        undelivered = []
-        for m in range(1, len(data), 3):
-
-            # для СВХ
-            if SVH_Gujon:
-                msg = data[m].decode('utf-8')
-                if 'Сервер не смог доставить сообщение электронной почты' in msg:
-                    msg_recipient = re.search(r'(?<=Original-Recipient: ).*', msg)[0].strip()
-                    msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
-                    # logger.debug(msg_arrival_date + msg_recipient)
-                    # undelivered.append((msg_arrival_date, msg_recipient))
-
-            # для Yandex
-            elif Yandex:
-                msg = email.message_from_bytes(data[m])
-                msg = msg.get_payload()
-                msg_arrival_date = re.search(r'(?<=Arrival-Date: ).*', msg)[0].strip()
-                msg_recipient = re.search(r'(?<=Original-Recipient: rfc822;).*', msg)[0].strip()
-
-            logger.debug(msg_arrival_date + msg_recipient)
-            undelivered.append((msg_arrival_date, msg_recipient))
-            
-        await imap_client.close()
-        await imap_client.logout()
-        return undelivered
+    
     except Exception as ex:
         err_msg = f'Ошибка проверки недоставленных сообщений'
         logger.exception(err_msg + f':   {ex}')

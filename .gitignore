@@ -1,5 +1,6 @@
 *.log
 *.json
+*.xlsx
 venv/
 рабочие/
 сервисные/
@@ -9,3 +10,4 @@ email_files/
 logs/
 telegram_files/
 config.ini
+error_emails_list.txt

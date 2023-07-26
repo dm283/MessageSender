@@ -101,8 +101,10 @@ async def btn_email_insert_db_click():
     await asyncio.sleep(0.5)
 
     datep = str(datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
-    query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, attachmentfiles, datep) values
-                ('{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
+    query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (guid_partia, type, errortxt, subj, textemail, adrto, attachmentfiles, datep) values
+                ('', '', '', '{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
+    # query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, attachmentfiles, datep) values
+    #             ('{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
     
     print(query)
     try:
