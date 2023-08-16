@@ -101,8 +101,8 @@ async def btn_email_insert_db_click():
     await asyncio.sleep(0.5)
 
     datep = str(datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"))
-    query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (guid_partia, type, errortxt, subj, textemail, adrto, attachmentfiles, datep) values
-                ('', '', '', '{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
+    query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (guid_partia, type, errortxt, subj, textemail, adrto, attachmentfiles, datep, id_enter) values
+                ('', '', '', '{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}', '') """
     # query = f""" insert into {EMAIL_DB_TABLE_EMAILS} (subj, textemail, adrto, attachmentfiles, datep) values
     #             ('{subj}', '{textemail}', '{adrto}', '{attachments}', '{datep}') """
     
@@ -165,7 +165,9 @@ async def load_records_from_db(mode):
     if mode == 'email':
         dsn = EMAIL_DB_CONNECTION_STRING
         current_db = EMAIL_DB
-        query = f"""select UniqueIndexField, adrto, subj, textemail, attachmentfiles, datep, dates
+        query = f"""select UniqueIndexField, adrto, subj, textemail, attachmentfiles, 
+        cast(datep as varchar(100)) as datep, 
+        cast(dates as varchar(100)) as dates
             from {EMAIL_DB_TABLE_EMAILS} order by datep desc"""
     elif mode == 'telegram':
         dsn = TELEGRAM_DB_CONNECTION_STRING
