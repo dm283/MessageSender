@@ -260,6 +260,7 @@ async def test_smtp_server(host, port, sender, pwd, receiver):
 async def test_imap_server(host, port, sender, pwd):
     # тестирует подключение к imap-сервер
     lbl_msg_test['email']['text'] = f"Подключение к {host}: {port} ....."
+    print(inbox_server)
     try:
 
         if inbox_server == 'SVH_Gujon':
@@ -276,6 +277,7 @@ async def test_imap_server(host, port, sender, pwd):
                 host=host, 
                 port=port, 
                 ssl_context=context,
+                timeout=60
                 )  # не ловиться исключение здесь!     
         elif inbox_server == 'PPP':
             import poplib

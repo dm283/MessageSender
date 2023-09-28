@@ -505,6 +505,7 @@ async def check_undelivered_emails(host, port, user, password):
                 host=host, 
                 port=port, 
                 ssl_context=context,
+                timeout=60,
                 )  # не ловиться исключение здесь!     
         elif inbox_server == 'PPP':
             import poplib
